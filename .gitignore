@@ -39,3 +39,4 @@ kern/dune.mod
 a.diff
 dune.ko
 dune.mod.c
+.clangd/

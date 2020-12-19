@@ -63,11 +63,6 @@ static long dune_dev_ioctl(struct file *filp, unsigned int ioctl,
 		}
 		break;
 
-	case DUNE_TRAP_ENABLE:
-    // TODO
-		// r = dune_trap_enable(arg);
-		break;
-
 	case DUNE_TRAP_DISABLE:
     // TODO
 		// r = dune_trap_disable(arg);
@@ -120,7 +115,7 @@ static int __init dune_init(void) {
   return r;
 }
 
-static void __exit dune_exit(void) {
+static void dune_exit(void) {
   misc_deregister(&dune_dev);
   vz_exit();
 }
