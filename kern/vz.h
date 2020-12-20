@@ -138,6 +138,8 @@ void dune_vz_load_guesttlb(const struct dune_mips_tlb *buf, unsigned int index,
 			  unsigned int count);
 void dune_vz_save_guesttlb(struct dune_mips_tlb *buf, unsigned int index,
 			  unsigned int count);
+void dune_vz_local_flush_guesttlb_all(void);
+void dune_vz_local_flush_roottlb_all_guests(void);
 
 #define dune_err(fmt, ...)                                                     \
 	pr_err("dune [%i]: " fmt, task_pid_nr(current), ##__VA_ARGS__)

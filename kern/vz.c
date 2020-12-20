@@ -92,19 +92,14 @@ static void dune_vz_get_new_guestid(unsigned long cpu)
 
 		++guestid;		/* guestid 0 reserved for root */
 
-    // TODO this is copied from vz.c, it's controversial to ls3acomp-vz.c
 		/* start new guestid cycle */
-#if CONFIG_CPU_LOONGSON3
-		/* Set cp0 diag to clear FTLB VTLB */
-		set_c0_diag(0x3000);
-#else
-		kvm_vz_local_flush_roottlb_all_guests();
-		kvm_vz_local_flush_guesttlb_all();
-#endif
+		dune_vz_local_flush_roottlb_all_guests();
+		dune_vz_local_flush_guesttlb_all();
 	}
 
 	guestid_cache(cpu) = guestid;
 }
+
 
 static void dune_vz_vcpu_load_tlb(struct vz_vcpu *vcpu, int cpu)
 {

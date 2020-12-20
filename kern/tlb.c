@@ -177,3 +177,136 @@ void dune_vz_load_guesttlb(const struct dune_mips_tlb *buf, unsigned int index,
 
 	tlbw_use_hazard();
 }
+
+/**
+ * kvm_vz_local_flush_roottlb_all_guests() - Flush all root TLB entries for
+ * guests.
+ *
+ * Invalidate all entries in root tlb which are GPA mappings.
+ */
+void dune_vz_local_flush_roottlb_all_guests(void)
+{
+	unsigned long flags;
+	unsigned long old_entryhi, old_pagemask, old_guestctl1;
+	int entry, diag;
+
+	if (WARN_ON(!cpu_has_guestid))
+		return;
+
+	local_irq_save(flags);
+	htw_stop();
+
+	/* TLBR may clobber EntryHi.ASID, PageMask, and GuestCtl1.RID */
+	old_entryhi = read_c0_entryhi();
+	old_pagemask = read_c0_pagemask();
+	old_guestctl1 = read_c0_guestctl1();
+
+	/*
+	 * Invalidate guest entries in root TLB while leaving root entries
+	 * intact when possible.
+	 */
+	for (entry = 0; entry < current_cpu_data.tlbsize; entry++) {
+		write_c0_index(entry);
+		mtc0_tlbw_hazard();
+		tlb_read();
+		tlb_read_hazard();
+
+#ifdef CONFIG_CPU_LOONGSON3
+		diag = read_c0_diag();
+		if (diag & 0xc0000) {
+			change_c0_diag(0xc0000, 0x0);
+			continue;
+		}
+#endif
+		/* Don't invalidate non-guest (RVA) mappings in the root TLB */
+		if (!(read_c0_guestctl1() & MIPS_GCTL1_RID))
+			continue;
+
+		/* Make sure all entries differ. */
+		write_c0_entryhi(UNIQUE_ENTRYHI(entry));
+		write_c0_entrylo0(0);
+		write_c0_entrylo1(0);
+		write_c0_guestctl1(0);
+		mtc0_tlbw_hazard();
+		tlb_write_indexed();
+	}
+#ifdef CONFIG_CPU_LOONGSON3
+	//Should clear DIAG.MID after tlbr
+	change_c0_diag(0xc0000, 0x0);
+#endif
+
+	write_c0_entryhi(old_entryhi);
+	write_c0_pagemask(old_pagemask);
+	write_c0_guestctl1(old_guestctl1);
+	tlbw_use_hazard();
+
+	htw_start();
+	local_irq_restore(flags);
+}
+
+/**
+ * kvm_vz_local_flush_guesttlb_all() - Flush all guest TLB entries.
+ *
+ * Invalidate all entries in guest tlb irrespective of guestid.
+ */
+void dune_vz_local_flush_guesttlb_all(void)
+{
+	unsigned long flags;
+	unsigned long old_index;
+	unsigned long old_entryhi;
+	unsigned long old_entrylo[2];
+	unsigned long old_pagemask;
+	int entry;
+	u64 cvmmemctl2 = 0;
+
+	local_irq_save(flags);
+
+	/* Preserve all clobbered guest registers */
+	old_index = read_gc0_index();
+	old_entryhi = read_gc0_entryhi();
+	old_entrylo[0] = read_gc0_entrylo0();
+	old_entrylo[1] = read_gc0_entrylo1();
+	old_pagemask = read_gc0_pagemask();
+
+	htw_stop();
+	set_root_gid_to_guest_gid();
+
+	switch (current_cpu_type()) {
+	case CPU_CAVIUM_OCTEON3:
+		/* Inhibit machine check due to multiple matching TLB entries */
+		cvmmemctl2 = read_c0_cvmmemctl2();
+		cvmmemctl2 |= CVMMEMCTL2_INHIBITTS;
+		write_c0_cvmmemctl2(cvmmemctl2);
+		break;
+	};
+
+	/* Invalidate guest entries in guest TLB */
+	write_gc0_entrylo0(0);
+	write_gc0_entrylo1(0);
+	write_gc0_pagemask(0);
+	for (entry = 0; entry < current_cpu_data.guest.tlbsize; entry++) {
+		/* Make sure all entries differ. */
+		write_gc0_index(entry);
+		write_gc0_entryhi(UNIQUE_GUEST_ENTRYHI(entry));
+		mtc0_tlbw_hazard();
+		guest_tlb_write_indexed();
+	}
+
+	if (cvmmemctl2) {
+		cvmmemctl2 &= ~CVMMEMCTL2_INHIBITTS;
+		write_c0_cvmmemctl2(cvmmemctl2);
+	};
+
+	/* Clear root GuestID again */
+	clear_root_gid();
+
+	write_gc0_index(old_index);
+	write_gc0_entryhi(old_entryhi);
+	write_gc0_entrylo0(old_entrylo[0]);
+	write_gc0_entrylo1(old_entrylo[1]);
+	write_gc0_pagemask(old_pagemask);
+	tlbw_use_hazard();
+
+	htw_start();
+	local_irq_restore(flags);
+}
