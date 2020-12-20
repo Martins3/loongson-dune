@@ -14,34 +14,43 @@
 
 #include <asm/traps.h>
 #include <asm/bitops.h>
+#include <asm/fpu.h>
+#include <asm/mipsregs.h>
+#include <asm/tlb.h>
 
 #include "dune.h"
 #include "vz.h"
 
-static void vz_get_cpu(struct vz_vcpu *vcpu);
-static void vz_put_cpu(struct vz_vcpu *vcpu);
+static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf);
 
-#define dune_err(fmt, ...) \
-	pr_err("dune [%i]: " fmt, task_pid_nr(current), ## __VA_ARGS__)
-#define dune_info(fmt, ...) \
-	pr_info("dune [%i]: " fmt, task_pid_nr(current), ## __VA_ARGS__)
-#define dune_debug(fmt, ...) \
-	pr_debug("dune [%i]: " fmt, task_pid_nr(current), ## __VA_ARGS__)
+
+#ifndef VECTORSPACING
+#define VECTORSPACING 0x100 /* for EI/VI mode */
+#endif
 
 static LIST_HEAD(vcpus);
+
+/* Pointers to last VCPU loaded on each physical CPU */
+static struct vz_vcpu *last_vcpu[NR_CPUS];
+/* Pointers to last VCPU executed on each physical CPU */
+static struct vz_vcpu *last_exec_vcpu[NR_CPUS];
+
+
+#define guestid_cache(cpu)	(cpu_data[cpu].guestid_cache)
 
 /**
  * vmx_init - the main initialization routine for this driver
  */
 __init int vz_init(void)
 {
-  // TODO this is all the thing we should init ?
-  kvm_mips_entry_setup();
+	// TODO this is all the thing we should init ?
+	dune_mips_entry_setup();
+	return 0;
 }
 
 void vz_exit(void)
 {
-  // TODO
+	// TODO
 }
 
 /**
@@ -49,49 +58,154 @@ void vz_exit(void)
  */
 static void vz_setup_registers(struct vz_vcpu *vcpu, struct dune_config *conf)
 {
-  // TODO
+	// TODO
 }
 
 /**
  * vmx_copy_registers_to_conf - copy registers to dune_config
  */
-static void vz_copy_registers_to_conf(struct vz_vcpu *vcpu, struct dune_config *conf){
-
-}
-
-
-
-/**
- * vmx_get_cpu - called before using a cpu
- * @vcpu: VCPU that will be loaded.
- *
- * Disables preemption. Call vmx_put_cpu() when finished.
- */
-static void vz_get_cpu(struct vz_vcpu *vcpu)
+static void vz_copy_registers_to_conf(struct vz_vcpu *vcpu,
+				      struct dune_config *conf)
 {
-  // TODO
-
 }
 
-/**
- * vmx_put_cpu - called after using a cpu
- * @vcpu: VCPU that was loaded.
- */
-static void vz_put_cpu(struct vz_vcpu *vcpu)
+static void dune_vcpu_load(struct vz_vcpu *vcpu)
 {
-  // TODO
+	// TODO 	vcpu_load in kvm
 }
 
-/**
- * vz_run_vcpu - launches the CPU into non-root mode
- * @vcpu: the vmx instance to launch
- */
-static int __noclone vz_run_vcpu(struct vz_vcpu *vcpu)
+static void dune_vcpu_put(struct vz_vcpu *vcpu)
 {
-  // TODO
+	// TODO
 }
 
+static void dune_vz_get_new_guestid(unsigned long cpu)
+{
+	unsigned long guestid = guestid_cache(cpu);
 
+	if (!(++guestid & GUESTID_MASK)) {
+		if (cpu_has_vtag_icache)
+			flush_icache_all();
+
+		if (!guestid)		/* fix version if needed */
+			guestid = GUESTID_FIRST_VERSION;
+
+		++guestid;		/* guestid 0 reserved for root */
+
+    // TODO this is copied from vz.c, it's controversial to ls3acomp-vz.c
+		/* start new guestid cycle */
+#if CONFIG_CPU_LOONGSON3
+		/* Set cp0 diag to clear FTLB VTLB */
+		set_c0_diag(0x3000);
+#else
+		kvm_vz_local_flush_roottlb_all_guests();
+		kvm_vz_local_flush_guesttlb_all();
+#endif
+	}
+
+	guestid_cache(cpu) = guestid;
+}
+
+static void dune_vz_vcpu_load_tlb(struct vz_vcpu *vcpu, int cpu)
+{
+	bool migrated;
+	/*
+	 * Are we entering guest context on a different CPU to last time?
+	 * If so, the VCPU's guest TLB state on this CPU may be stale.
+	 */
+	migrated = (vcpu->last_exec_cpu != cpu);
+	vcpu->last_exec_cpu = cpu;
+
+	/*
+	 * A vcpu's GuestID is set in GuestCtl1.ID when the vcpu is loaded and
+	 * remains set until another vcpu is loaded in.  As a rule GuestRID
+	 * remains zeroed when in root context unless the kernel is busy
+	 * manipulating guest tlb entries.
+	 */
+	if (cpu_has_guestid) {
+		/*
+		 * Check if our GuestID is of an older version and thus invalid.
+		 *
+		 * We also discard the stored GuestID if we've executed on
+		 * another CPU, as the guest mappings may have changed without
+		 * hypervisor knowledge.
+		 */
+		if (migrated ||
+		    (vcpu->vzguestid[cpu] ^ guestid_cache(cpu)) &
+					GUESTID_VERSION_MASK) {
+			dune_vz_get_new_guestid(cpu);
+			vcpu->vzguestid[cpu] = guestid_cache(cpu);
+		}
+
+		/* Restore GuestID */
+		change_c0_guestctl1(GUESTID_MASK, vcpu->vzguestid[cpu]);
+	} else {
+    dune_err("MIPS VZ and Loongson manual implys 3a4000 cpu has guestid, but in fact not\n");
+  }
+}
+
+static void dune_vz_vcpu_load_wired(struct vz_vcpu *vcpu)
+{
+	/* Load wired entries into the guest TLB */
+	if (vcpu->wired_tlb)
+		dune_vz_load_guesttlb(vcpu->wired_tlb, 0,
+				     vcpu->wired_tlb_used);
+}
+
+static void dune_vz_vcpu_save_wired(struct vz_vcpu *vcpu)
+{
+	unsigned int wired = read_gc0_wired();
+	struct dune_mips_tlb *tlbs;
+	int i;
+
+	/* Expand the wired TLB array if necessary */
+	wired &= MIPSR6_WIRED_WIRED;
+	if (wired > vcpu->wired_tlb_limit) {
+		tlbs = krealloc(vcpu->wired_tlb, wired *
+				sizeof(*vcpu->wired_tlb), GFP_ATOMIC);
+		if (WARN_ON(!tlbs)) {
+			/* Save whatever we can */
+			wired = vcpu->wired_tlb_limit;
+		} else {
+			vcpu->wired_tlb = tlbs;
+			vcpu->wired_tlb_limit = wired;
+		}
+	}
+
+	if (wired)
+		/* Save wired entries from the guest TLB */
+		dune_vz_save_guesttlb(vcpu->wired_tlb, 0, wired);
+	/* Invalidate any dropped entries since last time */
+	for (i = wired; i < vcpu->wired_tlb_used; ++i) {
+		vcpu->wired_tlb[i].tlb_hi = UNIQUE_GUEST_ENTRYHI(i);
+		vcpu->wired_tlb[i].tlb_lo[0] = 0;
+		vcpu->wired_tlb[i].tlb_lo[1] = 0;
+		vcpu->wired_tlb[i].tlb_mask = 0;
+	}
+	vcpu->wired_tlb_used = wired;
+}
+
+static int dune_vz_vcpu_run(struct vz_vcpu *vcpu)
+{
+	int cpu = smp_processor_id();
+	int r;
+
+  // TODO kvm_vz_check_requests used for flush remote TLB, maybe it's useless 
+	// kvm_vz_check_requests(vcpu, cpu);
+
+  dune_vz_vcpu_load_tlb(vcpu, cpu);
+  dune_vz_vcpu_load_wired(vcpu);
+
+	r = vcpu->vcpu_run(vcpu);
+  // TODO kvm_mips_build_ret_to_host should return to here. ensure it.
+
+  // TODO where is dune_vz_vcpu_save_tlb, when entering the CPU
+  // TODO dune_vz_load_tlb doesn't work as it's name implys, it handle something like guestid
+  // TODO vz_vcpu::guesttlb is unused
+  dune_vz_vcpu_save_wired(vcpu);
+
+	return r;
+}
 
 /**
  * vz_launch - the main loop for a VMX Dune process
@@ -99,109 +213,22 @@ static int __noclone vz_run_vcpu(struct vz_vcpu *vcpu)
  */
 int vz_launch(struct dune_config *conf, int64_t *ret_code)
 {
-	int ret, done = 0;
-	u32 exit_intr_info;
-	bool rescheduled = false;
-	struct vz_vcpu *vcpu = vz_create_vcpu(conf);
+	int r = -EINTR;
+	struct vz_vcpu *vcpu = dune_vz_create_vcpu(conf);
 	if (!vcpu)
 		return -ENOMEM;
+	printk(KERN_ERR "vmx: stopping VCPU (VPID %d)\n", vcpu->vpid);
 
-  // TODO do we have vpid supported ?
-	// printk(KERN_ERR "vmx: created VCPU (VPID %d)\n",
-				 // vcpu->vpid);
+	dune_vcpu_load(vcpu);
 
-	while (1) {
-	  pr_err("vmx: prepare run vcpu\n");
-		vz_get_cpu(vcpu);
-		if (rescheduled) {
-      // TODO
-			// update_vapic_addresses(vcpu);
-			rescheduled = false;
-		}
+  lose_fpu(1);
 
-    // TODO FPU
-		/*
-		 * We assume that a Dune process will always use
-		 * the FPU whenever it is entered, and thus we go
-		 * ahead and load FPU state here. The reason is
-		 * that we don't monitor or trap FPU usage inside
-		 * a Dune process.
-		 */
-		// compat_fpu_restore();
+	local_irq_disable();
 
-		local_irq_disable();
+  r = dune_vz_vcpu_run(vcpu);
+	local_irq_enable();
 
-		if (need_resched()) {
-			rescheduled = true;
-			local_irq_enable();
-			vz_put_cpu(vcpu);
-			cond_resched();
-			continue;
-		}
-
-		if (signal_pending(current)) {
-
-			local_irq_enable();
-			vz_put_cpu(vcpu);
-
-
-			vcpu->ret_code = DUNE_RET_SIGNAL;
-			break;
-		}
-
-		// setup_perf_msrs(vcpu);
-		// vmx_handle_queued_interrupts(vcpu);
-
-		ret = vz_run_vcpu(vcpu);
-
-    // TODO
-		/* We need to handle NMIs before interrupts are enabled */
-		// exit_intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
-		// if ((exit_intr_info & INTR_INFO_INTR_TYPE_MASK) == INTR_TYPE_NMI_INTR &&
-				// (exit_intr_info & INTR_INFO_VALID_MASK)) {
-			// asm("int $2");
-		// }
-
-		// vmx_handle_external_interrupt(vcpu, exit_intr_info);
-
-		local_irq_enable();
-
-		if (ret == EXIT_REASON_VMCALL ||
-			ret == EXIT_REASON_CPUID ||
-			ret == EXIT_REASON_MSR_WRITE) {
-      // problem fixed, so move to next instruction
-			vmx_step_instruction();
-		}
-
-		vz_put_cpu(vcpu);
-
-		// if (ret == EXIT_REASON_VMCALL)
-			// vmx_handle_syscall(vcpu);
-    // else if (ret == EXIT_REASON_CPUID)
-      // vmx_handle_cpuid(vcpu);
-		// else if (ret == EXIT_REASON_EPT_VIOLATION)
-			// done = vmx_handle_ept_violation(vcpu);
-		// else if (ret == EXIT_REASON_EXCEPTION_NMI) {
-      // if (vmx_handle_nmi_exception(vcpu))
-        // done = 1;
-		// } else if (ret == EXIT_REASON_MSR_WRITE) {
-      // if (vmx_handle_msr_write(vcpu))
-        // done = 1;
-		// } else if (ret != EXIT_REASON_EXTERNAL_INTERRUPT) {
-			// printk(KERN_INFO "unhandled exit: reason %d, exit qualification %x\n",
-					// ret, vmcs_read32(EXIT_QUALIFICATION));
-			// vcpu->ret_code = DUNE_RET_UNHANDLED_VMEXIT;
-			// vmx_dump_cpu(vcpu);
-			// done = 1;
-		// }
-//
-		if (done || vcpu->shutdown)
-			break;
-	}
-
-	printk(KERN_ERR "vmx: stopping VCPU (VPID %d)\n",
-			vcpu->vpid);
-
+	dune_vcpu_put(vcpu);
 	*ret_code = vcpu->ret_code;
 
 	vz_copy_registers_to_conf(vcpu, conf);
@@ -209,59 +236,74 @@ int vz_launch(struct dune_config *conf, int64_t *ret_code)
 	return 0;
 }
 
-/**
- * vmx_create_vcpu - allocates and initializes a new virtual cpu
- *
- * Returns: A new VCPU structure
- */
-static struct vz_vcpu * vz_create_vcpu(struct dune_config *conf)
-{ 
-  // struct kvm_vcpu *kvm_arch_vcpu_create(struct kvm *kvm, unsigned int id)
-  struct vz_vcpu * vcpu;
+static int dune_vz_vcpu_init(struct vz_vcpu *vcpu)
+{
+	int i;
 
-	if (conf->vcpu) {
-		/* This Dune configuration already has a VCPU. */
-		vcpu = (struct vz_vcpu *) conf->vcpu;
-		vz_get_cpu(vcpu);
-		vz_setup_registers(vcpu, conf);
-		vz_put_cpu(vcpu);
-		return vcpu;
-	}
+	for_each_possible_cpu (i)
+		vcpu->vzguestid[i] = 0;
 
-	vcpu = kmalloc(sizeof(struct vz_vcpu), GFP_KERNEL);
-	if (!vcpu)
-		return NULL;
-
-	memset(vcpu, 0, sizeof(*vcpu));
-
-	list_add(&vcpu->list, &vcpus);
-
-	vcpu->conf = conf;
-	conf->vcpu = (u64) vcpu;
-
-  // TODO
-  // 1. allocate gebase
-  // 2. tlb refill : gebase + 2000
-  // 3. normal exception
-  // 4. run
-  
-  return NULL;
+	return 0;
 }
 
+static void dune_vz_vcpu_uninit(struct vz_vcpu *vcpu)
+{
+	int cpu;
 
-static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
+	/*
+	 * If the VCPU is freed and reused as another VCPU, we don't want the
+	 * matching pointer wrongly hanging around in last_vcpu[] or
+	 * last_exec_vcpu[].
+	 */
+	for_each_possible_cpu (cpu) {
+		if (last_vcpu[cpu] == vcpu)
+			last_vcpu[cpu] = NULL;
+		if (last_exec_vcpu[cpu] == vcpu)
+			last_exec_vcpu[cpu] = NULL;
+	}
+}
+
+// TODO remove these two redundant function later
+void dune_vcpu_uninit(struct vz_vcpu *vcpu)
+{
+	dune_vz_vcpu_uninit(vcpu);
+}
+
+int dune_vcpu_init(struct vz_vcpu *vcpu)
+{
+	// TODO we will check the preempted / vcpu_load related stuff later
+	// vcpu->preempted = false;
+	return dune_vz_vcpu_init(vcpu);
+}
+
+// TODO don't include kvm_host.h
+static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf)
 {
 	int err, size;
 	void *gebase, *p, *handler, *refill_start, *refill_end;
 	int i;
-	struct vz_vcpu * vcpu;
+	struct vz_vcpu *vcpu;
 
+	if (conf->vcpu) {
+		/* This Dune configuration already has a VCPU. */
+		vcpu = (struct vz_vcpu *)conf->vcpu;
+    // TODO
+		vz_setup_registers(vcpu, conf);
+		return vcpu;
+	}
 
-  vcpu = kzalloc(sizeof(struct vz_vcpu), GFP_KERNEL);
+	vcpu = kzalloc(sizeof(struct vz_vcpu), GFP_KERNEL);
 	if (!vcpu) {
 		err = -ENOMEM;
 		goto out;
 	}
+
+  // TODO merge following 4 statement to dune_vcpu_init ?
+	memset(vcpu, 0, sizeof(*vcpu));
+	list_add(&vcpu->list, &vcpus);
+	vcpu->conf = conf;
+	conf->vcpu = (u64)vcpu;
+	err = dune_vcpu_init(vcpu);
 
 	/*
 	 * Allocate space for host mode exception handlers that handle
@@ -279,7 +321,7 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 		goto out_uninit_cpu;
 	}
 	dune_debug("Allocated %d bytes for KVM Exception Handlers @ %p\n",
-		  ALIGN(size, PAGE_SIZE), gebase);
+		   ALIGN(size, PAGE_SIZE), gebase);
 
 	/*
 	 * Check new ebase actually fits in CP0_EBase. The lack of a write gate
@@ -288,7 +330,7 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 	 */
 	if (!cpu_has_ebase_wg && virt_to_phys(gebase) >= 0x20000000) {
 		dune_err("CP0_EBase.WG required for guest exception base %pK\n",
-			gebase);
+			 gebase);
 		err = -ENOMEM;
 		goto out_free_gebase;
 	}
@@ -302,8 +344,9 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 	/* TLB refill (or XTLB refill on 64-bit VZ where KX=1) */
 	refill_start = gebase;
 	// IS_ENABLED(CONFIG_KVM_MIPS_VZ) && IS_ENABLED(CONFIG_64BIT)
-  refill_start += 0x080;
-	refill_end = kvm_mips_build_tlb_refill_exception(refill_start, handler);
+	refill_start += 0x080;
+	refill_end =
+		dune_mips_build_tlb_refill_exception(refill_start, handler);
 
 	/* General Exception Entry point */
 	dune_mips_build_exception(gebase + 0x180, handler);
@@ -311,20 +354,18 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 	/* For vectored interrupts poke the exception code @ all offsets 0-7 */
 	for (i = 0; i < 8; i++) {
 		dune_debug("L1 Vectored handler @ %p\n",
-			  gebase + 0x200 + (i * VECTORSPACING));
-		kvm_mips_build_exception(gebase + 0x200 + i * VECTORSPACING,
-					 handler);
+			   gebase + 0x200 + (i * VECTORSPACING));
+		dune_mips_build_exception(gebase + 0x200 + i * VECTORSPACING,
+					  handler);
 	}
 
-  // TODO what's difference between this and host normal exit handler ?
-  // - what does it contains ?
 	/* General exit handler */
 	p = handler;
-	p = kvm_mips_build_exit(p);
+	p = dune_mips_build_exit(p);
 
 	/* Guest entry routine */
 	vcpu->vcpu_run = p;
-	p = kvm_mips_build_vcpu_run(p);
+	p = dune_mips_build_vcpu_run(p);
 
 	/* Dump the generated code */
 	pr_debug("#include <asm/asm.h>\n");
@@ -334,7 +375,9 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 	dump_handler("kvm_tlb_refill", refill_start, refill_end);
 	dump_handler("kvm_gen_exc", gebase + 0x180, gebase + 0x200);
 	dump_handler("kvm_exit", gebase + 0x2000, vcpu->vcpu_run);
-	dune_info("start %lx end %lx handler %lx\n",(unsigned long)refill_start,(unsigned long)refill_end,(unsigned long)handler);
+	dune_info("start %lx end %lx handler %lx\n",
+		  (unsigned long)refill_start, (unsigned long)refill_end,
+		  (unsigned long)handler);
 
 	/* Invalidate the icache for these ranges */
 	flush_icache_range((unsigned long)gebase,
@@ -344,40 +387,40 @@ static struct kvm_vcpu *vz_create_vcpu(struct dune_config * conf)
 	 * Allocate comm page for guest kernel, a TLB will be reserved for
 	 * mapping GVA @ 0xFFFF8000 to this page
 	 */
-	vcpu->arch.kseg0_commpage = kzalloc(PAGE_SIZE << 1, GFP_KERNEL);
+	vcpu->kseg0_commpage = kzalloc(PAGE_SIZE << 1, GFP_KERNEL);
 
-	if (!vcpu->arch.kseg0_commpage) {
+	if (!vcpu->kseg0_commpage) {
 		err = -ENOMEM;
 		goto out_free_gebase;
 	}
 
-	dune_debug("Allocated COMM page @ %p\n", vcpu->arch.kseg0_commpage);
-	kvm_mips_commpage_init(vcpu);
+	dune_debug("Allocated COMM page @ %p\n", vcpu->kseg0_commpage);
+	dune_mips_commpage_init(vcpu);
 
 	dune_info("guest cop0 page @ %lx gprs @ %lx tlb @ %lx pc @ %lx\n",
-		  (unsigned long)vcpu->arch.cop0, (unsigned long)vcpu->arch.gprs,
-		  (unsigned long)vcpu->arch.guest_tlb, (unsigned long)&vcpu->arch.pc);
-	dune_info("pending exception @ %lx\n", (ulong)&vcpu->arch.pending_exceptions);
-	dune_info("fcr31 @ %lx\n", (ulong)&vcpu->arch.fpu.fcr31);
-	dune_info("count_bias @ %lx period @ %lx\n", (ulong)&vcpu->arch.count_bias, (ulong)&vcpu->arch.count_period);
-	dune_info("vzguestid @ %lx\n", (unsigned long)vcpu->arch.vzguestid);
-	dune_info("exit_reason @ %lx\n", (ulong)&vcpu->run->exit_reason);
-	dune_info("run @ %lx\n", (ulong)vcpu->run);
-	dune_info("wait @ %lx\n", (ulong)&vcpu->arch.wait);
-	dune_info("stable timer @ %lx\n", (ulong)&vcpu->arch.stable_timer_tick);
-	dune_info("use stable timer %x\n", vcpu->kvm->arch.use_stable_timer);
+		  (unsigned long)vcpu->cop0, (unsigned long)vcpu->gprs,
+		  (unsigned long)vcpu->guest_tlb, (unsigned long)&vcpu->pc);
+	dune_info("fcr31 @ %lx\n", (ulong)&vcpu->fpu.fcr31);
+
+	dune_info("vzguestid @ %lx\n", (unsigned long)vcpu->vzguestid);
+
+	dune_info("exit_reason @ %lx\n", (ulong)&vcpu->exit_reason);
+	// TODO examine arch->wait
+	// dune_info("wait @ %lx\n", (ulong)&vcpu->arch.wait);
+
 	dune_info("\n\n");
 	/* Init */
-	vcpu->arch.last_sched_cpu = -1;
-	vcpu->arch.last_exec_cpu = -1;
+	vcpu->last_sched_cpu = -1;
+	vcpu->last_exec_cpu = -1;
 
 	return vcpu;
 
+	// TODO check labels below
 out_free_gebase:
 	kfree(gebase);
 
 out_uninit_cpu:
-	kvm_vcpu_uninit(vcpu);
+	dune_vcpu_uninit(vcpu);
 
 out_free_cpu:
 	kfree(vcpu);

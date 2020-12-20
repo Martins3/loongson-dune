@@ -95,10 +95,10 @@ UASM_L_LA(_return_to_host)
 UASM_L_LA(_kernel_asid)
 UASM_L_LA(_exit_common)
 
-static void *kvm_mips_build_enter_guest(void *addr);
-static void *kvm_mips_build_ret_from_exit(void *addr);
-static void *kvm_mips_build_ret_to_guest(void *addr);
-static void *kvm_mips_build_ret_to_host(void *addr);
+static void *dune_mips_build_enter_guest(void *addr);
+static void *dune_mips_build_ret_from_exit(void *addr);
+static void *dune_mips_build_ret_to_guest(void *addr);
+static void *dune_mips_build_ret_to_host(void *addr);
 
 /*
  * The version of this function in tlbex.c uses current_cpu_type(), but for KVM
@@ -123,7 +123,7 @@ static int c0_kscratch(void)
  * Returns:	0 on success.
  *		-errno on failure.
  */
-int kvm_mips_entry_setup(void)
+int dune_mips_entry_setup(void)
 {
 	/*
 	 * We prefer to use KScratchN registers if they are available over the
@@ -151,7 +151,7 @@ int kvm_mips_entry_setup(void)
 	return 0;
 }
 
-static void kvm_mips_build_save_scratch(u32 **p, unsigned int tmp,
+static void dune_mips_build_save_scratch(u32 **p, unsigned int tmp,
 					unsigned int frame)
 {
 	/* Save the VCPU scratch register value in cp0_epc of the stack frame */
@@ -165,7 +165,7 @@ static void kvm_mips_build_save_scratch(u32 **p, unsigned int tmp,
 	}
 }
 
-static void kvm_mips_build_restore_scratch(u32 **p, unsigned int tmp,
+static void dune_mips_build_restore_scratch(u32 **p, unsigned int tmp,
 					   unsigned int frame)
 {
 	/*
@@ -215,7 +215,7 @@ static inline void build_set_exc_base(u32 **p, unsigned int reg)
  *
  * Returns:	Next address after end of written function.
  */
-void *kvm_mips_build_vcpu_run(void *addr)
+void *dune_mips_build_vcpu_run(void *addr)
 {
 	u32 *p = addr;
 	unsigned int i;
@@ -238,7 +238,7 @@ void *kvm_mips_build_vcpu_run(void *addr)
 	UASM_i_SW(&p, V0, offsetof(struct pt_regs, cp0_status), K1);
 
 	/* Save scratch registers, will be used to store pointer to vcpu etc */
-	kvm_mips_build_save_scratch(&p, V1, K1);
+	dune_mips_build_save_scratch(&p, V1, K1);
 
 	/* VCPU scratch register has pointer to vcpu */
 	UASM_i_MTC0(&p, A1, scratch_vcpu[0], scratch_vcpu[1]);
@@ -278,7 +278,7 @@ void *kvm_mips_build_vcpu_run(void *addr)
 	uasm_i_mtc0(&p, K0, C0_STATUS);
 	uasm_i_ehb(&p);
 
-	p = kvm_mips_build_enter_guest(p);
+	p = dune_mips_build_enter_guest(p);
 
 	return p;
 }
@@ -293,7 +293,7 @@ void *kvm_mips_build_vcpu_run(void *addr)
  *
  * Returns:	Next address after end of written function.
  */
-static void *kvm_mips_build_enter_guest(void *addr)
+static void *dune_mips_build_enter_guest(void *addr)
 {
 	u32 *p = addr;
 	unsigned int i;
@@ -464,9 +464,6 @@ skip_asid_restore:
 	return p;
 }
 
-// TODO compare this with `build_loongson3_tlb_refill_handler`,
-// Almost same, but no check_for_high_segbits, why ?
-// In fact, we support 48bit address space ?
 /**
  * kvm_mips_build_tlb_refill_exception() - Assemble TLB refill handler.
  * @addr:	Address to start writing code.
@@ -476,7 +473,7 @@ skip_asid_restore:
  *
  * Returns:	Next address after end of written function.
  */
-void *kvm_mips_build_tlb_refill_exception(void *addr, void *handler)
+void *dune_mips_build_tlb_refill_exception(void *addr, void *handler)
 {
 	u32 *p = addr;
 	struct uasm_label labels[2];
@@ -619,7 +616,7 @@ void *dune_mips_build_exception(void *addr, void *handler)
  *
  * Returns:	Next address after end of written function.
  */
-void *kvm_mips_build_exit(void *addr)
+void *dune_mips_build_exit(void *addr)
 {
 	u32 *p = addr;
 	unsigned int i;
@@ -825,7 +822,7 @@ void *kvm_mips_build_exit(void *addr)
 	 */
 
 	/* Restore host scratch registers, as we'll have clobbered them */
-	kvm_mips_build_restore_scratch(&p, K0, SP);
+	dune_mips_build_restore_scratch(&p, K0, SP);
 
 	/* Restore RDHWR access */
 	UASM_i_LA_mostly(&p, K0, (long)&hwrena);
@@ -846,7 +843,7 @@ void *kvm_mips_build_exit(void *addr)
 
 	uasm_resolve_relocs(relocs, labels);
 
-	p = kvm_mips_build_ret_from_exit(p);
+	p = dune_mips_build_ret_from_exit(p);
 
 	return p;
 }
@@ -860,7 +857,7 @@ void *kvm_mips_build_exit(void *addr)
  *
  * Returns:	Next address after end of written function.
  */
-static void *kvm_mips_build_ret_from_exit(void *addr)
+static void *dune_mips_build_ret_from_exit(void *addr)
 {
 	u32 *p = addr;
 	struct uasm_label labels[2];
@@ -893,10 +890,10 @@ static void *kvm_mips_build_ret_from_exit(void *addr)
 	 uasm_i_nop(&p);
 
 	uasm_i_sw(&p, ZERO, offsetof(struct kvm_vcpu_arch, is_hypcall), K1);
-	p = kvm_mips_build_ret_to_guest(p);
+	p = dune_mips_build_ret_to_guest(p);
 
 	uasm_l_return_to_host(&l, p);
-	p = kvm_mips_build_ret_to_host(p);
+	p = dune_mips_build_ret_to_host(p);
 
 	uasm_resolve_relocs(relocs, labels);
 
@@ -912,7 +909,7 @@ static void *kvm_mips_build_ret_from_exit(void *addr)
  *
  * Returns:	Next address after end of written function.
  */
-static void *kvm_mips_build_ret_to_guest(void *addr)
+static void *dune_mips_build_ret_to_guest(void *addr)
 {
 	u32 *p = addr;
 
@@ -937,7 +934,7 @@ static void *kvm_mips_build_ret_to_guest(void *addr)
 	uasm_i_mtc0(&p, V1, C0_STATUS);
 	uasm_i_ehb(&p);
 
-	p = kvm_mips_build_enter_guest(p);
+	p = dune_mips_build_enter_guest(p);
 
 	return p;
 }
@@ -952,7 +949,7 @@ static void *kvm_mips_build_ret_to_guest(void *addr)
  *
  * Returns:	Next address after end of written function.
  */
-static void *kvm_mips_build_ret_to_host(void *addr)
+static void *dune_mips_build_ret_to_host(void *addr)
 {
 	u32 *p = addr;
 	unsigned int i;

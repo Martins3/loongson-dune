@@ -18,6 +18,8 @@
 #include <asm/pgtable.h>
 #include <asm/cpufeature.h>
 
+#include "vz.h"
+
 void dump_handler(const char *symbol, void *start, void *end)
 {
 	u32 *p;
@@ -33,4 +35,13 @@ void dump_handler(const char *symbol, void *start, void *end)
 	pr_debug("\t.set\tpop\n");
 
 	pr_debug("\tEND(%s)\n", symbol);
+}
+
+// TODO what a complex way to assign a vcpu->cop0
+void dune_mips_commpage_init(struct vz_vcpu *vcpu)
+{
+	struct kvm_mips_commpage *page = vcpu->kseg0_commpage;
+
+	/* Specific init values for fields */
+	vcpu->cop0 = &page->cop0;
 }
