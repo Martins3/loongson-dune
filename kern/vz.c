@@ -18,6 +18,9 @@
 #include <asm/mipsregs.h>
 #include <asm/tlb.h>
 
+// TODO inorder to use some macro
+#include <asm/kvm_host.h>
+
 #include "dune.h"
 #include "vz.h"
 
@@ -180,12 +183,22 @@ static void dune_vz_vcpu_save_wired(struct vz_vcpu *vcpu)
 	vcpu->wired_tlb_used = wired;
 }
 
-static int dune_vz_vcpu_run(struct vz_vcpu *vcpu)
+
+void dune_vz_vcpu_reenter(struct vz_vcpu *vcpu)
+{
+  // TODO add it later
+	// kvm_vz_check_requests(vcpu, cpu);
+	int cpu = smp_processor_id();
+	dune_vz_vcpu_load_tlb(vcpu, cpu);
+}
+
+
+int dune_vz_vcpu_run(struct vz_vcpu *vcpu)
 {
 	int cpu = smp_processor_id();
 	int r;
 
-  // TODO kvm_vz_check_requests used for flush remote TLB, maybe it's useless 
+  // TODO kvm_vz_check_requests used for flush remote TLB, we will add later
 	// kvm_vz_check_requests(vcpu, cpu);
 
   dune_vz_vcpu_load_tlb(vcpu, cpu);
@@ -219,7 +232,6 @@ int vz_launch(struct dune_config *conf, int64_t *ret_code)
   lose_fpu(1);
 
 	local_irq_disable();
-
   r = dune_vz_vcpu_run(vcpu);
 	local_irq_enable();
 
@@ -422,4 +434,55 @@ out_free_cpu:
 
 out:
 	return ERR_PTR(err);
+}
+
+int dune_arch_vcpu_dump_regs(struct vz_vcpu *vcpu)
+{
+	int i;
+	struct mips_coproc *cop0;
+
+	if (!vcpu)
+		return -1;
+
+	dune_debug("VCPU Register Dump:\n");
+	dune_debug("\tpc = 0x%08lx\n", vcpu->pc);
+
+	for (i = 0; i < 32; i += 4) {
+		dune_debug("\tgpr%02d: %08lx %08lx %08lx %08lx\n", i,
+		       vcpu->gprs[i],
+		       vcpu->gprs[i + 1],
+		       vcpu->gprs[i + 2], vcpu->gprs[i + 3]);
+	}
+	dune_debug("\thi: 0x%08lx\n", vcpu->hi);
+	dune_debug("\tlo: 0x%08lx\n", vcpu->lo);
+
+	cop0 = vcpu->cop0;
+	dune_debug("\tStatus: 0x%08x, Cause: 0x%08x\n",
+		  kvm_read_c0_guest_status(cop0),
+		  kvm_read_c0_guest_cause(cop0));
+
+	dune_debug("\tEPC: 0x%08lx\n", kvm_read_c0_guest_epc(cop0));
+
+	return 0;
+}
+
+
+int dune_trap_vz_no_handler(struct vz_vcpu *vcpu)
+{
+	u32 *opc = (u32 *) vcpu->pc;
+	u32 cause = vcpu->host_cp0_cause;
+	u32 exccode = (cause & CAUSEF_EXCCODE) >> CAUSEB_EXCCODE;
+	unsigned long badvaddr = vcpu->host_cp0_badvaddr;
+	/*
+	 *  Fetch the instruction.
+	 */
+	if (cause & CAUSEF_BD)
+		opc += 1;
+
+	dune_err("Exception Code: %d not handled @ PC: %p, inst: 0x%08x BadVaddr: %#lx Status: %#x\n",
+		exccode, opc, vcpu->host_cp0_badinstr, badvaddr,
+		read_gc0_status());
+	dune_arch_vcpu_dump_regs(vcpu);
+	vcpu->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+	return RESUME_HOST;
 }
