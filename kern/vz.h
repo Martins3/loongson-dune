@@ -120,7 +120,6 @@ struct vz_vm {
 struct vz_vcpu {
 	struct list_head list;
 	int cpu;
-	int vpid; // TODO mips doesn't use vpid ?
 	int launched; // TODO launched and conf != NULL
 
 	int shutdown;
@@ -191,6 +190,9 @@ struct vz_vcpu {
 
 	/* Cache some mmu pages needed inside spinlock regions */
 	struct kvm_mmu_memory_cache mmu_page_cache;
+
+  // TODO in dune_arch_vcpu_load, we load it, but never assign to it
+	int vcpu_id;
 };
 
 /* entry.c */
@@ -313,5 +315,26 @@ int kvm_test_age_hva(struct vz_vm *kvm, unsigned long hva);
 
 void kvm_flush_remote_tlbs(struct vz_vm *kvm);
 int kvm_vz_host_tlb_inv(struct vz_vcpu *vcpu, unsigned long va);
+
+// TODO why I need it ?
+static inline int mmu_notifier_retry(struct vz_vm *kvm, unsigned long mmu_seq)
+{
+	if (unlikely(kvm->mmu_notifier_count))
+		return 1;
+	/*
+	 * Ensure the read of mmu_notifier_count happens before the read
+	 * of mmu_notifier_seq.  This interacts with the smp_wmb() in
+	 * mmu_notifier_invalidate_range_end to make sure that the caller
+	 * either sees the old (non-zero) value of mmu_notifier_count or
+	 * the new (incremented) value of mmu_notifier_seq.
+	 * PowerPC Book3s HV KVM calls this under a per-page lock
+	 * rather than under kvm->mmu_lock, for scalability, so
+	 * can't rely on kvm->mmu_lock to keep things ordered.
+	 */
+	smp_rmb();
+	if (kvm->mmu_notifier_seq != mmu_seq)
+		return 1;
+	return 0;
+}
 
 #endif

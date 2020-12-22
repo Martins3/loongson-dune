@@ -1086,10 +1086,8 @@ retry:
 		 * Make sure the host VA and the guest IPA are sufficiently
 		 * aligned and that the block is contained within the memslot.
 		 */
-		++vcpu->stat.lsvz_huge_thp_exits;
 		if (fault_supports_huge_mapping(memslot, hva, PMD_SIZE) &&
 		    transparent_hugepage_adjust(&pfn, &gpa)) {
-			++vcpu->stat.lsvz_huge_adjust_exits;
 			vma_pagesize = PMD_SIZE;
 		}
 	}
@@ -1143,14 +1141,13 @@ out:
 }
 
 int kvm_mips_handle_vz_root_tlb_fault(unsigned long badvaddr,
-				      struct kvm_vcpu *vcpu, bool write_fault)
+				      struct vz_vcpu *vcpu, bool write_fault)
 {
 	int ret;
 
 	if (current_cpu_type() == CPU_LOONGSON3_COMP) {
 		if (kvm_is_visible_gfn(vcpu->kvm, badvaddr >> PAGE_SHIFT) ==
 		    0) {
-			++vcpu->stat.lsvz_mmio_exits;
 			ret = RESUME_HOST;
 			return ret;
 		}
@@ -1165,7 +1162,7 @@ int kvm_mips_handle_vz_root_tlb_fault(unsigned long badvaddr,
 }
 
 /* Restore ASID once we are scheduled back after preemption */
-void dune_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
+void dune_arch_vcpu_load(struct vz_vcpu *vcpu, int cpu)
 {
 	unsigned long flags;
 
@@ -1174,9 +1171,9 @@ void dune_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	local_irq_save(flags);
 
 	vcpu->cpu = cpu;
-	if (vcpu->arch.last_sched_cpu != cpu) {
+	if (vcpu->last_sched_cpu != cpu) {
 		dune_debug("[%d->%d]KVM VCPU[%d] switch\n",
-			   vcpu->arch.last_sched_cpu, cpu, vcpu->vcpu_id);
+			   vcpu->last_sched_cpu, cpu, vcpu->vcpu_id);
 	}
 
 	/* restore guest state to registers */
@@ -1187,7 +1184,7 @@ void dune_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 // TODO
 /* ASID can change if another task is scheduled during preemption */
-void dune_arch_vcpu_put(struct kvm_vcpu *vcpu)
+void dune_arch_vcpu_put(struct vz_vcpu *vcpu)
 {
 	unsigned long flags;
 	int cpu;
@@ -1195,7 +1192,7 @@ void dune_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	local_irq_save(flags);
 
 	cpu = smp_processor_id();
-	vcpu->arch.last_sched_cpu = cpu;
+	vcpu->last_sched_cpu = cpu;
 	vcpu->cpu = -1;
 
 	// TODO
