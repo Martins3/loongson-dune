@@ -12,7 +12,6 @@
 #include <linux/highmem.h>
 #include <linux/hugetlb.h>
 #include <linux/page-flags.h>
-#include "vz.h"
 #include <linux/uaccess.h>
 #include <linux/nospec.h>
 #include <linux/srcu.h>
@@ -20,6 +19,9 @@
 
 #include <asm/mmu_context.h>
 #include <asm/pgalloc.h>
+
+#include "vz.h"
+#include "memslot.h"
 
 #define KVM_MMU_CACHE_MIN_PAGES 2
 

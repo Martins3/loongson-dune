@@ -1,3 +1,5 @@
+#ifndef _H_VZ
+#define _H_VZ
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
 #include <linux/kvm_types.h> // TODO remove anything about kvm ?
@@ -5,6 +7,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/types.h>
 #include <linux/mmu_notifier.h>
+#include <linux/nospec.h>
 
 #include "dune.h"
 
@@ -310,3 +313,5 @@ int kvm_test_age_hva(struct vz_vm *kvm, unsigned long hva);
 
 void kvm_flush_remote_tlbs(struct vz_vm *kvm);
 int kvm_vz_host_tlb_inv(struct vz_vcpu *vcpu, unsigned long va);
+
+#endif
