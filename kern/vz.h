@@ -114,27 +114,6 @@ struct vz_vm {
 	struct mm_struct gpa_mm;
 };
 
-// TODO too many hacks, the code is almost out of control
-struct kvm {
-	spinlock_t mmu_lock;
-	struct mmu_notifier mmu_notifier;
-	unsigned long mmu_notifier_seq;
-	long mmu_notifier_count;
-	struct srcu_struct srcu;
-	long tlbs_dirty;
-
-	struct vz_vcpu *vcpus[KVM_MAX_VCPUS];
-	atomic_t online_vcpus;
-
-	struct mm_struct *current_mm;
-
-#define KVM_ADDRESS_SPACE_NUM 1
-	struct kvm_memslots __rcu *memslots[KVM_ADDRESS_SPACE_NUM];
-
-	/* Guest physical mm */
-	struct mm_struct gpa_mm;
-};
-
 struct vz_vcpu {
 	struct list_head list;
 	int cpu;
@@ -193,82 +172,6 @@ struct vz_vcpu {
 	unsigned int wired_tlb_used;
 
 	struct vz_vm * kvm;
-
-	/* Host CP0 registers used when handling exits from guest */
-	unsigned long host_cp0_badvaddr;
-	unsigned long host_cp0_epc;
-	u32 host_cp0_cause;
-	u32 host_cp0_guestctl0;
-	u32 host_cp0_badinstr;
-	u32 host_cp0_badinstrp;
-	u32 host_cp0_gscause;
-
-	// TODO we remove it by accident, will restore it later, I mean any function related with it
-	int mode;
-	u64 requests;
-
-	/* Cache some mmu pages needed inside spinlock regions */
-	struct kvm_mmu_memory_cache mmu_page_cache;
-};
-
-struct kvm_vcpu {
-	struct list_head list;
-	int cpu;
-	int vpid; // TODO mips doesn't use vpid ?
-	int launched; // TODO launched and conf != NULL
-
-	int shutdown;
-	// TODO seems two ret_code ?
-	int ret_code;
-
-	// TODO
-	// sys_call_ptr_t *syscall_tbl;
-	struct dune_config *conf;
-
-	void *guest_ebase;
-
-	// TODO this is what to do next !
-	int (*vcpu_run)(struct vz_vcpu *vcpu);
-
-	/* Host KSEG0 address of the EI/DI offset */
-	void *kseg0_commpage;
-
-	/* COP0 State */
-	struct mips_coproc *cop0;
-
-	/* GPRS */
-	unsigned long gprs[NR_VCPU_REGS];
-	unsigned long hi;
-	unsigned long lo;
-	// TODO pc
-	unsigned long pc;
-
-	/* S/W Based TLB for guest */
-	struct dune_mips_tlb guest_tlb[KVM_MIPS_GUEST_TLB_SIZE];
-
-	/* FPU State */
-	// TODO what's fcr31 ?
-	struct mips_fpu_struct fpu;
-
-	/* vcpu's vzguestid is different on each host cpu in an smp system */
-	u64 vzguestid[NR_CPUS];
-
-	// TODO this is originally in kvm_run::exit_reason
-	/* out */
-	u32 exit_reason;
-
-	// TODO why I need this ?
-	/* Last CPU the VCPU state was loaded on */
-	int last_sched_cpu;
-	/* Last CPU the VCPU actually executed guest code on */
-	int last_exec_cpu;
-
-	/* wired guest TLB entries */
-	struct dune_mips_tlb *wired_tlb;
-	unsigned int wired_tlb_limit;
-	unsigned int wired_tlb_used;
-
-	struct kvm * kvm;
 
 	/* Host CP0 registers used when handling exits from guest */
 	unsigned long host_cp0_badvaddr;
