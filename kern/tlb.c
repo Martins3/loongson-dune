@@ -18,6 +18,7 @@ unsigned long GUESTID_MASK;
 unsigned long GUESTID_FIRST_VERSION;
 unsigned long GUESTID_VERSION_MASK;
 
+
 /**
  * clear_root_gid() - Set GuestCtl1.RID for normal root operation.
  */
@@ -309,4 +310,79 @@ void dune_vz_local_flush_guesttlb_all(void)
 
 	htw_start();
 	local_irq_restore(flags);
+
+}
+
+// TODO if cpu_has_guestid, we should remove this function
+static u32 kvm_mips_get_root_asid(struct vz_vcpu *vcpu)
+{
+	if (cpu_has_guestid)
+		return 0;
+	else
+    BUG();
+}
+
+static int _kvm_mips_host_tlb_inv(unsigned long entryhi)
+{
+	int idx;
+
+	write_c0_entryhi(entryhi);
+	mtc0_tlbw_hazard();
+
+	tlb_probe();
+	tlb_probe_hazard();
+	idx = read_c0_index();
+
+	if (idx >= current_cpu_data.tlbsize)
+		BUG();
+
+	if (idx >= 0) {
+		write_c0_entryhi(UNIQUE_ENTRYHI(idx));
+		write_c0_entrylo0(0);
+		write_c0_entrylo1(0);
+		mtc0_tlbw_hazard();
+
+		tlb_write_indexed();
+		tlbw_use_hazard();
+	}
+
+	return idx;
+}
+
+int kvm_vz_host_tlb_inv(struct vz_vcpu *vcpu, unsigned long va)
+{
+	int idx;
+	unsigned long flags, old_entryhi;
+
+	local_irq_save(flags);
+	htw_stop();
+
+	/* Set root GuestID for root probe and write of guest TLB entry */
+	set_root_gid_to_guest_gid();
+
+	old_entryhi = read_c0_entryhi();
+
+	idx = _kvm_mips_host_tlb_inv((va & VPN2_MASK) |
+				     kvm_mips_get_root_asid(vcpu));
+
+	write_c0_entryhi(old_entryhi);
+	clear_root_gid();
+	mtc0_tlbw_hazard();
+
+	htw_start();
+	local_irq_restore(flags);
+
+	/*
+	 * We don't want to get reserved instruction exceptions for missing tlb
+	 * entries.
+	 */
+	if (cpu_has_vtag_icache)
+		flush_icache_all();
+
+	if (idx > 0)
+		dune_debug("%s: Invalidated root entryhi %#lx @ idx %d\n",
+			  __func__, (va & VPN2_MASK) |
+				    kvm_mips_get_root_asid(vcpu), idx);
+
+	return 0;
 }

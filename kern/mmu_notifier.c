@@ -285,6 +285,7 @@ static const struct mmu_notifier_ops kvm_mmu_notifier_ops = {
 	.release = kvm_mmu_notifier_release,
 };
 
+// TODO init with kvm_pgd_alloc ?
 static int kvm_init_mmu_notifier(struct vz_vm *kvm)
 {
   kvm->mmu_notifier.ops = &kvm_mmu_notifier_ops;
