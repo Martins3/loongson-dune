@@ -74,7 +74,6 @@ int dune_mips_handle_exit(struct vz_vcpu *vcpu)
 	unsigned long badvaddr = vcpu->host_cp0_badvaddr;
 	int badinstr = vcpu->host_cp0_badinstr;
 	enum emulation_result er = EMULATE_DONE;
-	u32 inst;
 	int ret = RESUME_GUEST;
 
 	/* re-enable HTW before enabling interrupts */
@@ -117,8 +116,24 @@ int dune_mips_handle_exit(struct vz_vcpu *vcpu)
 		ret = dune_trap_vz_no_handler(vcpu);
 		break;
 
+	// .handle_cop_unusable = kvm_trap_vz_handle_cop_unusable,
+	// .handle_tlb_ld_miss = kvm_trap_vz_handle_tlb_ld_miss,
+	// .handle_tlb_st_miss = kvm_trap_vz_handle_tlb_st_miss,
+	// .handle_addr_err_st = kvm_trap_vz_no_handler,
+	// .handle_addr_err_ld = kvm_trap_vz_no_handler,
+	// .handle_syscall = kvm_trap_vz_no_handler,
+	// .handle_res_inst = kvm_trap_vz_no_handler,
+	// .handle_break = kvm_trap_vz_no_handler,
+	// .handle_msa_disabled = kvm_trap_vz_handle_msa_disabled,
+	// .handle_lasx_disabled = kvm_trap_vz_handle_lasx_disabled,
+	// .handle_guest_exit = kvm_trap_vz_handle_guest_exit,
+	// .handle_tlbri = kvm_trap_vz_handle_tlb_ld_miss,
+	// .handle_tlbxi = kvm_trap_vz_handle_tlb_ld_miss,
+
 	case EXCCODE_MOD:
-		ret = kvm_mips_callbacks->handle_tlb_mod(vcpu);
+	  // .handle_tlb_mod = kvm_trap_vz_handle_tlb_st_miss,
+		// ret = kvm_mips_callbacks->handle_tlb_mod(vcpu);
+    ret= kvm_trap_vz_handle_tlb_st_miss(vcpu);
 		break;
 
 	case EXCCODE_TLBS:
@@ -150,6 +165,7 @@ int dune_mips_handle_exit(struct vz_vcpu *vcpu)
 		break;
 
 	case EXCCODE_GE:
+    // TODO this is what hypercall involves
 		break;
 
 	default:

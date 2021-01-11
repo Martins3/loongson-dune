@@ -8,7 +8,10 @@ TEST_OBJ = mintest.o
 
 # $(NOFPU_OBJ): EXTRA_FLAGS := -mno-sse -mno-mmx -mno-sse2 -mno-3dnow -msoft-float
 
-all: libdune.a
+all: kvm
+
+kvm.out:
+	echo "TODO"
 
 libdune.a: $(OBJ)
 	$(AR) crD $(@) $(OBJ)

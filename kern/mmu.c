@@ -870,6 +870,7 @@ void kvm_set_pfn_dirty(kvm_pfn_t pfn)
 }
 
 // TODO in dune, ad bit isn't being tracking
+// mark_page_dirty will setbit on dirty bitmap
 /**
  * _kvm_mips_map_page_fast() - Fast path GPA fault handler.
  * @vcpu:		VCPU pointer.

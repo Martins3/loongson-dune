@@ -186,6 +186,7 @@ struct vz_vcpu {
 
 	// TODO we remove it by accident, will restore it later, I mean any function related with it
 	int mode;
+  // TODO remote tlb flush need it
 	u64 requests;
 
 	/* Cache some mmu pages needed inside spinlock regions */

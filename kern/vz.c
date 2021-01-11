@@ -18,15 +18,13 @@
 #include <asm/mipsregs.h>
 #include <asm/tlb.h>
 
-// TODO inorder to use some macro
-#include <asm/kvm_host.h>
-
+#include <linux/kvm_host.h>
 #include "dune.h"
 #include "vz.h"
 
-static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf);
+static struct vz_vcpu *dune_vz_create_vcpu(struct dune_config *conf);
 
-
+// TODO check manual for code
 #ifndef VECTORSPACING
 #define VECTORSPACING 0x100 /* for EI/VI mode */
 #endif
@@ -38,15 +36,14 @@ static struct vz_vcpu *last_vcpu[NR_CPUS];
 /* Pointers to last VCPU executed on each physical CPU */
 static struct vz_vcpu *last_exec_vcpu[NR_CPUS];
 
-
-#define guestid_cache(cpu)	(cpu_data[cpu].guestid_cache)
+#define guestid_cache(cpu) (cpu_data[cpu].guestid_cache)
 
 /**
  * vmx_init - the main initialization routine for this driver
  */
 __init int vz_init(void)
 {
-	// TODO this is all the thing we should init ?
+	// TODO this is all the thing we should init ? of course not.
 	dune_mips_entry_setup();
 	return 0;
 }
@@ -90,10 +87,10 @@ static void dune_vz_get_new_guestid(unsigned long cpu)
 		if (cpu_has_vtag_icache)
 			flush_icache_all();
 
-		if (!guestid)		/* fix version if needed */
+		if (!guestid) /* fix version if needed */
 			guestid = GUESTID_FIRST_VERSION;
 
-		++guestid;		/* guestid 0 reserved for root */
+		++guestid; /* guestid 0 reserved for root */
 
 		/* start new guestid cycle */
 		dune_vz_local_flush_roottlb_all_guests();
@@ -102,7 +99,6 @@ static void dune_vz_get_new_guestid(unsigned long cpu)
 
 	guestid_cache(cpu) = guestid;
 }
-
 
 static void dune_vz_vcpu_load_tlb(struct vz_vcpu *vcpu, int cpu)
 {
@@ -128,8 +124,7 @@ static void dune_vz_vcpu_load_tlb(struct vz_vcpu *vcpu, int cpu)
 		 * another CPU, as the guest mappings may have changed without
 		 * hypervisor knowledge.
 		 */
-		if (migrated ||
-		    (vcpu->vzguestid[cpu] ^ guestid_cache(cpu)) &
+		if (migrated || (vcpu->vzguestid[cpu] ^ guestid_cache(cpu)) &
 					GUESTID_VERSION_MASK) {
 			dune_vz_get_new_guestid(cpu);
 			vcpu->vzguestid[cpu] = guestid_cache(cpu);
@@ -138,16 +133,16 @@ static void dune_vz_vcpu_load_tlb(struct vz_vcpu *vcpu, int cpu)
 		/* Restore GuestID */
 		change_c0_guestctl1(GUESTID_MASK, vcpu->vzguestid[cpu]);
 	} else {
-    dune_err("MIPS VZ and Loongson manual implys 3a4000 cpu has guestid, but in fact not\n");
-  }
+		dune_err(
+			"MIPS VZ and Loongson manual implys 3a4000 cpu has guestid, but in fact not\n");
+	}
 }
 
 static void dune_vz_vcpu_load_wired(struct vz_vcpu *vcpu)
 {
 	/* Load wired entries into the guest TLB */
 	if (vcpu->wired_tlb)
-		dune_vz_load_guesttlb(vcpu->wired_tlb, 0,
-				     vcpu->wired_tlb_used);
+		dune_vz_load_guesttlb(vcpu->wired_tlb, 0, vcpu->wired_tlb_used);
 }
 
 static void dune_vz_vcpu_save_wired(struct vz_vcpu *vcpu)
@@ -159,8 +154,8 @@ static void dune_vz_vcpu_save_wired(struct vz_vcpu *vcpu)
 	/* Expand the wired TLB array if necessary */
 	wired &= MIPSR6_WIRED_WIRED;
 	if (wired > vcpu->wired_tlb_limit) {
-		tlbs = krealloc(vcpu->wired_tlb, wired *
-				sizeof(*vcpu->wired_tlb), GFP_ATOMIC);
+		tlbs = krealloc(vcpu->wired_tlb,
+				wired * sizeof(*vcpu->wired_tlb), GFP_ATOMIC);
 		if (WARN_ON(!tlbs)) {
 			/* Save whatever we can */
 			wired = vcpu->wired_tlb_limit;
@@ -183,41 +178,40 @@ static void dune_vz_vcpu_save_wired(struct vz_vcpu *vcpu)
 	vcpu->wired_tlb_used = wired;
 }
 
-
 void dune_vz_vcpu_reenter(struct vz_vcpu *vcpu)
 {
-  // TODO add it later
+	// TODO add it later
 	// kvm_vz_check_requests(vcpu, cpu);
 	int cpu = smp_processor_id();
 	dune_vz_vcpu_load_tlb(vcpu, cpu);
 }
-
 
 int dune_vz_vcpu_run(struct vz_vcpu *vcpu)
 {
 	int cpu = smp_processor_id();
 	int r;
 
-  // TODO kvm_vz_check_requests used for flush remote TLB, we will add later
+	// TODO kvm_vz_check_requests used for flush remote TLB, we will add later
 	// kvm_vz_check_requests(vcpu, cpu);
 
-  dune_vz_vcpu_load_tlb(vcpu, cpu);
-  dune_vz_vcpu_load_wired(vcpu);
+	dune_vz_vcpu_load_tlb(vcpu, cpu);
+	dune_vz_vcpu_load_wired(vcpu);
 
 	r = vcpu->vcpu_run(vcpu);
-  // TODO kvm_mips_build_ret_to_host should return to here. ensure it.
+	// TODO kvm_mips_build_ret_to_host should return to here. ensure it.
 
-  // TODO where is dune_vz_vcpu_save_tlb, when entering the CPU
-  // TODO dune_vz_load_tlb doesn't work as it's name implys, it handle something like guestid
-  // TODO vz_vcpu::guesttlb is unused
-  dune_vz_vcpu_save_wired(vcpu);
+	// TODO where is dune_vz_vcpu_save_tlb, when entering the CPU
+	// TODO dune_vz_load_tlb doesn't work as it's name implys, it handle something like guestid
+	// TODO vz_vcpu::guesttlb is unused
+	dune_vz_vcpu_save_wired(vcpu);
 
 	return r;
 }
 
 /**
- * vz_launch - the main loop for a VMX Dune process
+ * the main loop for a VMX Dune process,  related with kvm_arch_vcpu_ioctl_run and vmx_launch
  * @conf: the launch configuration
+ *
  */
 int vz_launch(struct dune_config *conf, int64_t *ret_code)
 {
@@ -225,14 +219,13 @@ int vz_launch(struct dune_config *conf, int64_t *ret_code)
 	struct vz_vcpu *vcpu = dune_vz_create_vcpu(conf);
 	if (!vcpu)
 		return -ENOMEM;
-	printk(KERN_ERR "vmx: stopping VCPU (VPID %d)\n", vcpu->vpid);
 
 	dune_vcpu_load(vcpu);
 
-  lose_fpu(1);
+	lose_fpu(1);
 
 	local_irq_disable();
-  r = dune_vz_vcpu_run(vcpu);
+	r = dune_vz_vcpu_run(vcpu);
 	local_irq_enable();
 
 	dune_vcpu_put(vcpu);
@@ -284,7 +277,7 @@ int dune_vcpu_init(struct vz_vcpu *vcpu)
 }
 
 // TODO don't include kvm_host.h
-static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf)
+static struct vz_vcpu *dune_vz_create_vcpu(struct dune_config *conf)
 {
 	int err, size;
 	void *gebase, *p, *handler, *refill_start, *refill_end;
@@ -294,7 +287,7 @@ static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf)
 	if (conf->vcpu) {
 		/* This Dune configuration already has a VCPU. */
 		vcpu = (struct vz_vcpu *)conf->vcpu;
-    // TODO
+		// TODO
 		vz_setup_registers(vcpu, conf);
 		return vcpu;
 	}
@@ -305,7 +298,7 @@ static struct vz_vcpu * dune_vz_create_vcpu(struct dune_config *conf)
 		goto out;
 	}
 
-  // TODO merge following 4 statement to dune_vcpu_init ?
+	// TODO merge following 4 statement to dune_vcpu_init ?
 	memset(vcpu, 0, sizeof(*vcpu));
 	list_add(&vcpu->list, &vcpus);
 	vcpu->conf = conf;
@@ -449,27 +442,25 @@ int dune_arch_vcpu_dump_regs(struct vz_vcpu *vcpu)
 
 	for (i = 0; i < 32; i += 4) {
 		dune_debug("\tgpr%02d: %08lx %08lx %08lx %08lx\n", i,
-		       vcpu->gprs[i],
-		       vcpu->gprs[i + 1],
-		       vcpu->gprs[i + 2], vcpu->gprs[i + 3]);
+			   vcpu->gprs[i], vcpu->gprs[i + 1], vcpu->gprs[i + 2],
+			   vcpu->gprs[i + 3]);
 	}
 	dune_debug("\thi: 0x%08lx\n", vcpu->hi);
 	dune_debug("\tlo: 0x%08lx\n", vcpu->lo);
 
 	cop0 = vcpu->cop0;
 	dune_debug("\tStatus: 0x%08x, Cause: 0x%08x\n",
-		  kvm_read_c0_guest_status(cop0),
-		  kvm_read_c0_guest_cause(cop0));
+		   kvm_read_c0_guest_status(cop0),
+		   kvm_read_c0_guest_cause(cop0));
 
 	dune_debug("\tEPC: 0x%08lx\n", kvm_read_c0_guest_epc(cop0));
 
 	return 0;
 }
 
-
 int dune_trap_vz_no_handler(struct vz_vcpu *vcpu)
 {
-	u32 *opc = (u32 *) vcpu->pc;
+	u32 *opc = (u32 *)vcpu->pc;
 	u32 cause = vcpu->host_cp0_cause;
 	u32 exccode = (cause & CAUSEF_EXCCODE) >> CAUSEB_EXCCODE;
 	unsigned long badvaddr = vcpu->host_cp0_badvaddr;
@@ -479,10 +470,141 @@ int dune_trap_vz_no_handler(struct vz_vcpu *vcpu)
 	if (cause & CAUSEF_BD)
 		opc += 1;
 
-	dune_err("Exception Code: %d not handled @ PC: %p, inst: 0x%08x BadVaddr: %#lx Status: %#x\n",
+	dune_err(
+		"Exception Code: %d not handled @ PC: %p, inst: 0x%08x BadVaddr: %#lx Status: %#x\n",
 		exccode, opc, vcpu->host_cp0_badinstr, badvaddr,
 		read_gc0_status());
 	dune_arch_vcpu_dump_regs(vcpu);
 	vcpu->exit_reason = KVM_EXIT_INTERNAL_ERROR;
 	return RESUME_HOST;
+}
+
+/**
+ * kvm_vz_gva_to_gpa() - Convert valid GVA to GPA.
+ * @vcpu:	KVM VCPU state.
+ * @gva:	Guest virtual address to convert.
+ * @gpa:	Output guest physical address.
+ *
+ * Convert a guest virtual address (GVA) which is valid according to the guest
+ * context, to a guest physical address (GPA).
+ *
+ * Returns:	0 on success.
+ *		-errno on failure.
+ */
+static int kvm_vz_gva_to_gpa(struct kvm_vcpu *vcpu, unsigned long gva,
+			     unsigned long *gpa)
+{
+	u32 gva32 = gva;
+
+	if ((long)gva == (s32)gva32) {
+		/* Handle canonical 32-bit virtual address */
+		if ((s32)gva32 < (s32)0xc0000000) {
+			/* legacy unmapped KSeg0 or KSeg1 */
+			*gpa = gva32 & 0x1fffffff;
+			return 0;
+		}
+#ifdef CONFIG_64BIT
+	} else if ((gva & 0xc000000000000000) == 0x8000000000000000) {
+		/* XKPHYS */
+
+		/*
+		 * Traditionally fully unmapped.
+		 * Bits 61:59 specify the CCA, which we can just mask off here.
+		 * Bits 58:PABITS should be zero, but we shouldn't have got here
+		 * if it wasn't.
+		 */
+		*gpa = gva & 0x07ffffffffffffff;
+		return 0;
+#endif
+	}
+
+	return kvm_vz_guest_tlb_lookup(vcpu, gva, gpa);
+}
+
+/**
+ * kvm_vz_badvaddr_to_gpa() - Convert GVA BadVAddr from root exception to GPA.
+ * @vcpu:	KVM VCPU state.
+ * @badvaddr:	Root BadVAddr.
+ * @gpa:	Output guest physical address.
+ *
+ * VZ implementations are permitted to report guest virtual addresses (GVA) in
+ * BadVAddr on a root exception during guest execution, instead of the more
+ * convenient guest physical addresses (GPA). When we get a GVA, this function
+ * converts it to a GPA, taking into account guest segmentation and guest TLB
+ * state.
+ *
+ * Returns:	0 on success.
+ *		-errno on failure.
+ */
+static int kvm_vz_badvaddr_to_gpa(struct kvm_vcpu *vcpu, unsigned long badvaddr,
+				  unsigned long *gpa)
+{
+	unsigned int gexccode =
+		(vcpu->arch.host_cp0_guestctl0 & MIPS_GCTL0_GEXC) >>
+		MIPS_GCTL0_GEXC_SHIFT;
+
+	/* If BadVAddr is GPA, then all is well in the world */
+	if (likely(gexccode == MIPS_GCTL0_GEXC_GPA)) {
+		*gpa = badvaddr;
+		return 0;
+	}
+
+	/* Otherwise we'd expect it to be GVA ... */
+	if (WARN(gexccode != MIPS_GCTL0_GEXC_GVA, "Unexpected gexccode %#x\n",
+		 gexccode))
+		return -EINVAL;
+
+	/* ... and we need to perform the GVA->GPA translation in software */
+	return kvm_vz_gva_to_gpa(vcpu, badvaddr, gpa);
+}
+
+int kvm_trap_vz_handle_tlb_st_miss(struct vz_vcpu *vcpu)
+{
+	u32 *opc = (u32 *)vcpu->pc;
+	u32 cause = vcpu->host_cp0_cause;
+	ulong badvaddr = vcpu->host_cp0_badvaddr;
+	union mips_instruction inst;
+	enum emulation_result er = EMULATE_DONE;
+	int err;
+	int ret = RESUME_GUEST;
+
+	/* Just try the access again if we couldn't do the translation */
+	if (kvm_vz_badvaddr_to_gpa(vcpu, badvaddr, &badvaddr))
+		return RESUME_GUEST;
+	vcpu->host_cp0_badvaddr = badvaddr;
+
+	if (kvm_mips_handle_vz_root_tlb_fault(badvaddr, vcpu, true)) {
+		/* Fetch the instruction */
+		if (cause & CAUSEF_BD)
+			opc += 1;
+		err = kvm_get_badinstr(opc, vcpu, &inst.word);
+		if (err) {
+			vcpu->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+			return RESUME_HOST;
+		}
+
+		// TODO I know MMIO is noy my duty, but there are still several interesting question to follows
+		// 1. why kvm_mips_handle_vz_root_tlb_fault failed means the addr is MMIO
+    // 2. kvm_mips_emulate_store works internally
+    // 3. what  
+
+		/* Treat as MMIO */
+		// er = kvm_mips_emulate_store(inst, cause, run, vcpu);
+		// if (er == EMULATE_FAIL) {
+		// kvm_err("Guest Emulate Store to MMIO space failed: PC: %p, BadVaddr: %#lx\n",
+		// opc, badvaddr);
+		// vcpu->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+		// }
+	}
+
+	if (er == EMULATE_DONE) {
+		ret = RESUME_GUEST;
+	} else if (er == EMULATE_DO_MMIO) {
+		vcpu->exit_reason = KVM_EXIT_MMIO;
+		ret = RESUME_HOST;
+	} else {
+		vcpu->exit_reason = KVM_EXIT_INTERNAL_ERROR;
+		ret = RESUME_HOST;
+	}
+	return ret;
 }
