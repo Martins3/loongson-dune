@@ -1,6 +1,7 @@
 #include "minunit.h"
 #include "mmu-mips.h"
 #include "types.h"
+#include "kvm.h"
 
 // https://github.com/siu/minunit/blob/master/minunit_example.c
 
@@ -39,6 +40,7 @@ void test_BIG_PGSIZE(void){
 }
 
 
+
 MU_TEST_SUITE(test_mmu_mips) {
 	MU_SUITE_CONFIGURE(&test_setup, &test_teardown);
 
@@ -47,7 +49,7 @@ MU_TEST_SUITE(test_mmu_mips) {
 }
 
 int main(int argc, char *argv[]) {
-	MU_RUN_SUITE(test_mmu_mips);
+	// MU_RUN_SUITE(test_mmu_mips);
 	MU_REPORT();
 	return MU_EXIT_CODE;
 }

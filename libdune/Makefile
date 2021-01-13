@@ -1,7 +1,8 @@
 CC      = gcc
 CFLAGS  = -Wall -g -MD -ggdb3
 LDFLAGS = -static -L. -ldune
-OBJ     = entry.o
+
+OBJ     = kvm.o
 TEST_OBJ = mintest.o
 
 # NOFPU_OBJ = trap.o
@@ -10,16 +11,13 @@ TEST_OBJ = mintest.o
 
 all: kvm
 
-kvm.out:
-	echo "TODO"
-
 libdune.a: $(OBJ)
 	$(AR) crD $(@) $(OBJ)
 
 clean:
 	rm -f *.o test *.d libdune.a
 
-mintest.out: mintest.o
+mintest.out: mintest.o $(OBJ)
 	$(CC) $^ -o $@
 
 test: mintest.out

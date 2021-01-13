@@ -40,3 +40,7 @@ a.diff
 dune.ko
 dune.mod.c
 .clangd/
+
+mm/mm.ko
+mm/mm.mod
+mm/mm.mod.c
