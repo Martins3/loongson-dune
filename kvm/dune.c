@@ -8,7 +8,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include "cp0.h"
+
+#ifndef LOONGSON
 #include "kvm.h"
+#else
+#include <linux/kvm.h>
+#endif
 
 typedef unsigned char u8;
 typedef unsigned short u16;
@@ -30,7 +36,7 @@ struct kvm_cpu {
 	struct kvm *kvm;
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
-  struct kvm_regs regs;
+	struct kvm_regs regs;
 };
 
 void die_perror(const char *s)
@@ -181,8 +187,75 @@ static int setup_cache_routine()
 	return -errno;
 }
 
-static int init_cp0()
+struct cp0_reg {
+	struct kvm_one_reg reg;
+	u64 v;
+};
+
+
+static int init_cp0(struct kvm_cpu *cpu)
 {
+  int i;
+  struct cp0_reg one_regs[] = { 
+    { .reg = {.id = KVM_REG_MIPS_CP0_INDEX},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_RANDOM},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO0},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO1},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXT},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXTCONFIG},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_USERLOCAL},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXTCONFIG},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PAGEMASK},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PAGEGRAIN},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL0},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL1},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL2},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PWBASE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PWFIELD},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PWSIZE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_WIRED},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PWCTL},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_HWRENA},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_BADVADDR},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTR},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTRP},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_COUNT},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYHI},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_COMPARE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_STATUS},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_INTCTL},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CAUSE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_EPC},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_PRID},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_EBASE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG1},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG2},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG3},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG4},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG5},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG6},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG7},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_MAARI},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXT},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_GSCAUSE},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_ERROREPC},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH1},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH2},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH3},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH4},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH5},  .v = 12345678 },
+    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH6},  .v = 12345678 },
+  };
+
+  for (i = 0; i < sizeof(one_regs)/sizeof(struct cp0_reg); ++i) {
+    one_regs[i].reg.addr = (u64)&(one_regs[i].v);
+  }
+
+  for (i = 0; i < sizeof(one_regs)/sizeof(struct cp0_reg); ++i) {
+    if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0)
+      die_perror("KVM_SET_ONE_REG failed");
+  }
 	return -errno;
 }
 
@@ -205,25 +278,18 @@ static int init_config()
 	return -errno;
 }
 
-void kvm_cpu__run(struct kvm_cpu *vcpu)
-{
-	int err;
-
-	err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
-	if (err < 0 && (errno != EINTR && errno != EAGAIN))
-		die_perror("KVM_RUN failed");
-}
-
 static int kvm__init_guest()
 {
 	int ret = 0;
-	// cp0 register init
 
-	// general register init
+	ret = init_cp0();
+	if (ret < 0)
+		return ret;
 
-	// 调查一下:
-	// 1. 由于 guestid 的存在，应该是不需要 Host 的吧 !
-	// 2. cache 的需要初始化吗 ?
+	ret = init_config();
+	if (ret < 0)
+		return ret;
+
 	return ret;
 }
 
@@ -232,9 +298,18 @@ int syscall_emulation(struct kvm_cpu *cpu)
 	return -errno;
 }
 
+void kvm_cpu__run(struct kvm_cpu *vcpu)
+{
+	int err;
+
+	err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
+	if (err < 0 && (errno != EINTR && errno != EAGAIN))
+		die_perror("KVM_RUN");
+}
+
 int kvm_cpu__start(struct kvm_cpu *cpu)
 {
-	if (kvm__init_guest()) {
+	if (kvm__init_guest(cpu)) {
 		pr_err("guest init\n");
 	} else {
 		pr_info("guest init\n");
@@ -250,7 +325,8 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 			break;
 		}
 		default:
-			pr_err("TODO : there are so many exit reason that I didn't check");
+			die_perror(
+				"TODO : there are so many exit reason that I didn't check");
 		}
 	}
 }
@@ -285,7 +361,7 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 
 	mmap_size = ioctl(vcpu->kvm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
 	if (mmap_size < 0)
-		die_perror("KVM_GET_VCPU_MMAP_SIZE ioctl");
+		die_perror("KVM_GET_VCPU_MMAP_SIZE");
 
 	vcpu->kvm_run = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
 			     MAP_SHARED, vcpu->vcpu_fd, 0);
@@ -297,21 +373,10 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 
 static void kvm_cpu__setup_regs(struct kvm_cpu *vcpu)
 {
-	u32 v;
-	struct kvm_one_reg one_reg;
-
 	struct kvm_regs regs;
 
 	if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 		die_perror("KVM_SET_REGS failed");
-
-	one_reg.id = KVM_REG_MIPS | KVM_REG_SIZE_U32 |
-		     (0x10000 + 8 * 12 + 0); /* Status */
-	one_reg.addr = (unsigned long)(u32 *)&v;
-	v = 6;
-
-	if (ioctl(vcpu->vcpu_fd, KVM_SET_ONE_REG, &one_reg) < 0)
-		die_perror("KVM_SET_ONE_REG failed");
 }
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
@@ -334,11 +399,11 @@ int kvm__init()
 		pr_err("unable to open %s", dev_path);
 		goto err;
 	} else {
-		dune.vm_fd = ret;
+		dune.sys_fd = ret;
 		pr_info("open %s", dev_path);
 	}
 
-	ret = ioctl(dune.vm_fd, KVM_GET_API_VERSION, 0);
+	ret = ioctl(dune.sys_fd, KVM_GET_API_VERSION, 0);
 	if (ret != KVM_API_VERSION) {
 		pr_err("KVM_GET_API_VERSION");
 		goto err_sys_fd;
@@ -346,7 +411,7 @@ int kvm__init()
 		pr_info("KVM_GET_API_VERSION");
 	}
 
-	ret = ioctl(dune.vm_fd, KVM_CREATE_VM, KVM_VM_TYPE);
+	ret = ioctl(dune.sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
 	if (ret < 0) {
 		pr_err("KVM_CREATE_VM");
 		goto err_sys_fd;
@@ -373,7 +438,7 @@ int kvm__init()
 	}
 
 	struct kvm_cpu *cpu = kvm_cpu__init(&dune, 0);
-  kvm_cpu__start(cpu);
+	kvm_cpu__start(cpu);
 
 // TODO maybe just exit, no need to close them
 err_vm_fd:
@@ -386,6 +451,9 @@ err:
 
 int main(int argc, char *argv[])
 {
+#ifndef LOONGSON
+	die_perror("run it in loongson\n");
+#endif
 	if (kvm__init()) {
 		pr_err("KVM failed");
 	}
