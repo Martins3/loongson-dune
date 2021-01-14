@@ -36,11 +36,14 @@ void gen_cp0()
     string x;
     iss >> x;
     iss >> x;
+
     if(x.substr(0, 3) == "KVM"){
+      string g = x.substr(strlen("KVM_REG_MIPS_CP0_"));
       printf(
         "{ .reg = {.id = %s},"
-        "  .v = 12345678 "
-        "},\n", x.c_str());
+        "  .name = \"%s\","
+        "  .v = 0x12345678"
+        "},\n", x.c_str(), g.c_str());
 
     }
 	}

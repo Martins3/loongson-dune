@@ -12,8 +12,8 @@ obj-m        = mm.o
 CFLAGS_mm.o := -DDEBUG -o0
 
 kbuild:
-	rsync --delete -avzh maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/loongson/dune/
-	make -C $(KDIR) M=`pwd`
+	rsync --delete -avzh --exclude='/.git' --filter="dir-merge,- .gitignore" maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/loongson/dune/
+	make -C $(KDIR) M=`pwd` && sudo insmod mm.ko && sudo rmmod mm && dmesg
 
 clean:
 	make -C $(KDIR) M=`pwd` clean

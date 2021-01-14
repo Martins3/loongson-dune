@@ -7,7 +7,7 @@ all: sync
 	# mips64el-loongson-linux-objdump -d hello.o
 
 sync:
-	rsync --delete -avzh maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/loongson/dune/
+	rsync --delete -avzh --exclude='/.git' --filter="dir-merge,- .gitignore" maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/loongson/dune/
 
 ass: sync
 	gcc -g hello.c -o hello.out

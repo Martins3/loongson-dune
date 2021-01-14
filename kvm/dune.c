@@ -39,6 +39,15 @@ struct kvm_cpu {
 	struct kvm_regs regs;
 };
 
+#define KNRM  "\x1B[0m"
+#define KRED  "\x1B[31m"
+#define KGRN  "\x1B[32m"
+#define KYEL  "\x1B[33m"
+#define KBLU  "\x1B[34m"
+#define KMAG  "\x1B[35m"
+#define KCYN  "\x1B[36m"
+#define KWHT  "\x1B[37m"
+
 void die_perror(const char *s)
 {
 	perror(s);
@@ -49,12 +58,14 @@ static void report(const char *prefix, const char *err, va_list params)
 {
 	char msg[1024];
 	vsnprintf(msg, sizeof(msg), err, params);
-	fprintf(stderr, " %s%s\n", prefix, msg);
+	fprintf(stdout, " %s%s\n", prefix, msg);
 }
 
 static void error_builtin(const char *err, va_list params)
 {
+  printf("%s", KCYN);
 	report(" Error: ", err, params);
+  printf("%s", KNRM);
 }
 
 #ifdef __GNUC__
@@ -68,7 +79,9 @@ static void error_builtin(const char *err, va_list params)
 
 static NORETURN void die_builtin(const char *err, va_list params)
 {
+  printf("%s", KRED);
 	report(" Fatal: ", err, params);
+  printf("%s", KNRM);
 	exit(128);
 }
 
@@ -104,6 +117,7 @@ void die(const char *err, ...)
 	va_end(params);
 }
 
+// TODO : use this to debug : KVM_GET_REG_LIST
 void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
 {
 	struct kvm_regs regs;
@@ -189,73 +203,79 @@ static int setup_cache_routine()
 
 struct cp0_reg {
 	struct kvm_one_reg reg;
+  char name[100];
 	u64 v;
 };
 
-
+// TODO 验证一下
+// cpu_guest_has_contextconfig
+// cpu_guest_has_segments
+// cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
-  int i;
-  struct cp0_reg one_regs[] = { 
-    { .reg = {.id = KVM_REG_MIPS_CP0_INDEX},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_RANDOM},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO0},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO1},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXT},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXTCONFIG},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_USERLOCAL},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXTCONFIG},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PAGEMASK},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PAGEGRAIN},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL0},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL1},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_SEGCTL2},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PWBASE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PWFIELD},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PWSIZE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_WIRED},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PWCTL},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_HWRENA},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_BADVADDR},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTR},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTRP},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_COUNT},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYHI},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_COMPARE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_STATUS},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_INTCTL},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CAUSE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_EPC},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_PRID},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_EBASE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG1},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG2},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG3},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG4},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG5},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG6},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG7},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_MAARI},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXT},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_GSCAUSE},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_ERROREPC},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH1},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH2},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH3},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH4},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH5},  .v = 12345678 },
-    { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH6},  .v = 12345678 },
-  };
+	int i;
+	struct cp0_reg one_regs[] = {
+      { .reg = {.id = KVM_REG_MIPS_CP0_INDEX},  .name = "INDEX",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_RANDOM},  .name = "RANDOM",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO0},  .name = "ENTRYLO0",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO1},  .name = "ENTRYLO1",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXT},  .name = "CONTEXT",  .v = 0x12345678}, 
+      { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXT},  .name = "XCONTEXT",  .v = 0x12345678}, // 6.2.4 Page-Table Access Helpers—Context and XContext
+      { .reg = {.id = KVM_REG_MIPS_CP0_PAGEMASK},  .name = "PAGEMASK",  .v = 0x12345678},
 
-  for (i = 0; i < sizeof(one_regs)/sizeof(struct cp0_reg); ++i) {
-    one_regs[i].reg.addr = (u64)&(one_regs[i].v);
-  }
+      { .reg = {.id = KVM_REG_MIPS_CP0_USERLOCAL},  .name = "USERLOCAL",  .v = 0x12345678},
 
-  for (i = 0; i < sizeof(one_regs)/sizeof(struct cp0_reg); ++i) {
-    if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0)
-      die_perror("KVM_SET_ONE_REG failed");
-  }
+      // 当前思路:
+      // - 可以不会触发 ri xi, 但是什么叫做采用不同的入口
+      //   - ebase 入口设计，现在的想法是，建立一个 memslot，将 gebase 放到 physical 的位置
+      { .reg = {.id = KVM_REG_MIPS_CP0_PAGEGRAIN},  .name = "PAGEGRAIN",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_PWBASE},  .name = "PWBASE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_PWFIELD},  .name = "PWFIELD",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_PWSIZE},  .name = "PWSIZE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_WIRED},  .name = "WIRED",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_PWCTL},  .name = "PWCTL",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_HWRENA},  .name = "HWRENA",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_BADVADDR},  .name = "BADVADDR",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTR},  .name = "BADINSTR",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTRP},  .name = "BADINSTRP",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_COUNT},  .name = "COUNT",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYHI},  .name = "ENTRYHI",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_COMPARE},  .name = "COMPARE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_STATUS},  .name = "STATUS",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_INTCTL},  .name = "INTCTL",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CAUSE},  .name = "CAUSE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_EPC},  .name = "EPC",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_PRID},  .name = "PRID",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_EBASE},  .name = "EBASE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG},  .name = "CONFIG",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG1},  .name = "CONFIG1",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG2},  .name = "CONFIG2",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG3},  .name = "CONFIG3",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG4},  .name = "CONFIG4",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG5},  .name = "CONFIG5",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG6},  .name = "CONFIG6",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG7},  .name = "CONFIG7",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_GSCAUSE},  .name = "GSCAUSE",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_ERROREPC},  .name = "ERROREPC",  .v = 0x12345678},
+
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH1},  .name = "KSCRATCH1",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH2},  .name = "KSCRATCH2",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH3},  .name = "KSCRATCH3",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH4},  .name = "KSCRATCH4",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH5},  .name = "KSCRATCH5",  .v = 0x12345678},
+      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH6},  .name = "KSCRATCH6",  .v = 0x12345678},
+	};
+
+	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
+		one_regs[i].reg.addr = (u64) & (one_regs[i].v);
+	}
+
+	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
+		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0)
+			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
+    else
+			pr_info("KVM_SET_ONE_REG %s", one_regs[i].name);
+	}
 	return -errno;
 }
 
@@ -278,11 +298,11 @@ static int init_config()
 	return -errno;
 }
 
-static int kvm__init_guest()
+static int kvm__init_guest(struct kvm_cpu *cpu)
 {
 	int ret = 0;
 
-	ret = init_cp0();
+	ret = init_cp0(cpu);
 	if (ret < 0)
 		return ret;
 
