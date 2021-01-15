@@ -1,6 +1,7 @@
 all: sync
 	gcc -DLOONGSON dune.c -o dune.out
 	./dune.out
+	sudo dmesg -c
 
 # ass:
 	# mips64el-loongson-linux-gcc -c hello.c -o hello.o

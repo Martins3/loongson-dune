@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
+#include <string.h>
 #include "cp0.h"
 
 #ifndef LOONGSON
@@ -39,7 +40,7 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	struct kvm_regs regs;
-  void * ebase;
+	void *ebase;
 };
 
 #define KNRM "\x1B[0m"
@@ -213,43 +214,48 @@ struct cp0_reg {
 const u64 MIPS_XKPHYSX_CACHED = 0x9800000000000000;
 
 // TODO why kvmtool ignored PROT_EXEC ?
-#define PROT_RWX (PROT_READ | PROT_WRITE |PROT_EXEC)
+#define PROT_RWX (PROT_READ | PROT_WRITE | PROT_EXEC)
 #define MAP_ANON_NORESERVE (MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE)
 
-static void alloc_ebase(struct kvm_cpu * cpu)
+static void alloc_ebase(struct kvm_cpu *cpu)
 {
-	void * addr = mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
-  if(addr == NULL && ((u64)addr & 0xffff) != 0)
-    die_perror("alloc_ebase");
-  cpu->ebase = addr;
+	void *addr =
+		mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	if (addr == NULL && ((u64)addr & 0xffff) != 0)
+		die_perror("alloc_ebase");
+	cpu->ebase = addr;
+  printf("ebase address : %llx\n", (u64)addr);
 }
 #define EBASE_TLB_OFFSET 0x0
 #define EBASE_XTLB_OFFSET 0x80
 #define EBASE_CACHE_OFFSET 0x100
 #define EBASE_GE_OFFSET 0x180
 
-static int init_ebase_tlb(struct kvm_cpu * cpu){
-  return -errno;
+static int init_ebase_tlb(struct kvm_cpu *cpu)
+{
+	return -errno;
 }
 
-static int init_ebase_xtlb(struct kvm_cpu * cpu){
-  return -errno;
+static int init_ebase_xtlb(struct kvm_cpu *cpu)
+{
+	return -errno;
 }
 
-static int init_ebase_cache(struct kvm_cpu * cpu){
-  return -errno;
+static int init_ebase_cache(struct kvm_cpu *cpu)
+{
+	return -errno;
 }
 
-static int init_ebase_general(struct kvm_cpu * cpu){
-  return -errno;
+static int init_ebase_general(struct kvm_cpu *cpu)
+{
+	return -errno;
 }
 
 #define CP0_INIT_REG(X)                                                        \
 	{                                                                      \
 		.reg = { .id = KVM_REG_MIPS_CP0_##X }, .name = #X,             \
-		.v = INIT_VALUE_##X                                                 \
+		.v = INIT_VALUE_##X                                            \
 	}
-
 
 // TODO 验证一下
 // cpu_guest_has_contextconfig
@@ -257,69 +263,69 @@ static int init_ebase_general(struct kvm_cpu * cpu){
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
-  alloc_ebase(cpu);
-  init_ebase_tlb(cpu);
-  init_ebase_xtlb(cpu);
-  init_ebase_cache(cpu);
-  init_ebase_general(cpu);
+	alloc_ebase(cpu);
+	init_ebase_tlb(cpu);
+	init_ebase_xtlb(cpu);
+	init_ebase_cache(cpu);
+	init_ebase_general(cpu);
 
-  u64 INIT_VALUE_EBASE = (u64)cpu->ebase;
+	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 
 	int i;
 	struct cp0_reg one_regs[] = {
-    CP0_INIT_REG(INDEX),
-    CP0_INIT_REG(RANDOM),
-    CP0_INIT_REG(ENTRYLO0),
-    CP0_INIT_REG(ENTRYLO1),
-    CP0_INIT_REG(CONTEXT),
+		CP0_INIT_REG(INDEX),
+		CP0_INIT_REG(RANDOM),
+		CP0_INIT_REG(ENTRYLO0),
+		CP0_INIT_REG(ENTRYLO1),
+		CP0_INIT_REG(CONTEXT),
 		// CP0_INIT_REG(CONTEXTCONFIG),
-    CP0_INIT_REG(USERLOCAL),
+		CP0_INIT_REG(USERLOCAL),
 		// CP0_INIT_REG(XCONTEXTCONFIG),
-		// CP0_INIT_REG(PAGEMASK),
+    CP0_INIT_REG(PAGEMASK),
 		CP0_INIT_REG(PAGEGRAIN),
 		// CP0_INIT_REG(SEGCTL0),
 		// CP0_INIT_REG(SEGCTL1),
 		// CP0_INIT_REG(SEGCTL2),
-    CP0_INIT_REG(PWBASE),
-    CP0_INIT_REG(PWFIELD),
-    CP0_INIT_REG(PWSIZE),
-    CP0_INIT_REG(WIRED),
-    CP0_INIT_REG(PWCTL),
-    CP0_INIT_REG(HWRENA),
-    CP0_INIT_REG(BADVADDR),
-    CP0_INIT_REG(BADINSTR),
-    CP0_INIT_REG(BADINSTRP),
-    CP0_INIT_REG(COUNT),
-    CP0_INIT_REG(ENTRYHI),
-    CP0_INIT_REG(COMPARE),
-    CP0_INIT_REG(STATUS),
-    CP0_INIT_REG(INTCTL),
-    CP0_INIT_REG(CAUSE),
-    CP0_INIT_REG(EPC),
-    CP0_INIT_REG(PRID),
-    CP0_INIT_REG(EBASE),
+		CP0_INIT_REG(PWBASE),
+		CP0_INIT_REG(PWFIELD),
+		CP0_INIT_REG(PWSIZE),
+		CP0_INIT_REG(WIRED),
+		CP0_INIT_REG(PWCTL),
+		CP0_INIT_REG(HWRENA),
+		CP0_INIT_REG(BADVADDR),
+		CP0_INIT_REG(BADINSTR),
+		CP0_INIT_REG(BADINSTRP),
+		CP0_INIT_REG(COUNT),
+		CP0_INIT_REG(ENTRYHI),
+		CP0_INIT_REG(COMPARE),
+		CP0_INIT_REG(STATUS),
+		CP0_INIT_REG(INTCTL),
+		CP0_INIT_REG(CAUSE),
+		CP0_INIT_REG(EPC),
+		CP0_INIT_REG(PRID),
+		CP0_INIT_REG(EBASE),
 
-    // CP0_INIT_REG(CONFIG),
-		// CP0_INIT_REG(CONFIG1),
-		// CP0_INIT_REG(CONFIG2),
-		// CP0_INIT_REG(CONFIG3),
-		// CP0_INIT_REG(CONFIG4),
-		// CP0_INIT_REG(CONFIG5),
-		// CP0_INIT_REG(CONFIG6),
-		// CP0_INIT_REG(CONFIG7),
+    CP0_INIT_REG(CONFIG),
+    CP0_INIT_REG(CONFIG1),
+    CP0_INIT_REG(CONFIG2),
+    CP0_INIT_REG(CONFIG3),
+    CP0_INIT_REG(CONFIG4),
+    CP0_INIT_REG(CONFIG5),
+    CP0_INIT_REG(CONFIG6),
+    CP0_INIT_REG(CONFIG7),
 
 		// CP0_INIT_REG(MAARI),
-    
-    CP0_INIT_REG(XCONTEXT),
-    CP0_INIT_REG(GSCAUSE),
-    CP0_INIT_REG(ERROREPC),
 
-    CP0_INIT_REG(KSCRATCH1),
-    CP0_INIT_REG(KSCRATCH2),
-    CP0_INIT_REG(KSCRATCH3),
-    CP0_INIT_REG(KSCRATCH4),
-    CP0_INIT_REG(KSCRATCH5),
-    CP0_INIT_REG(KSCRATCH6),
+		CP0_INIT_REG(XCONTEXT),
+		CP0_INIT_REG(GSCAUSE),
+		CP0_INIT_REG(ERROREPC),
+
+		CP0_INIT_REG(KSCRATCH1),
+		CP0_INIT_REG(KSCRATCH2),
+		CP0_INIT_REG(KSCRATCH3),
+		CP0_INIT_REG(KSCRATCH4),
+		CP0_INIT_REG(KSCRATCH5),
+		CP0_INIT_REG(KSCRATCH6),
 	};
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
@@ -327,18 +333,22 @@ static int init_cp0(struct kvm_cpu *cpu)
 	}
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
-		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0)
+		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0) {
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-		else
+		} else {
 			pr_info("KVM_SET_ONE_REG %s", one_regs[i].name);
+			return -errno;
+		}
 	}
-	return -errno;
+	return 0;
 }
 
 // TODO /home/maritns3/core/loongson-dune/cross/arch/mips/include/uapi/asm/kvm.h
 // definition of `struct fpu` is empty
 //
 // TODO use fpu in guest will cause vm exit ?
+//
+// TODO 当前 qemu 使用的 fpu 是不是需要拷贝到 guest 中间 ?
 static int init_fpu()
 {
 	return -errno;
@@ -351,14 +361,10 @@ static int init_simd()
 
 static int kvm__init_guest(struct kvm_cpu *cpu)
 {
-	int ret = 0;
+	if (init_cp0(cpu) < 0)
+		return -errno;
 
-	ret = init_cp0(cpu);
-	if (ret < 0)
-		return ret;
-
-
-	return ret;
+	return 0;
 }
 
 int syscall_emulation(struct kvm_cpu *cpu)
@@ -378,26 +384,59 @@ void kvm_cpu__run(struct kvm_cpu *vcpu)
 int kvm_cpu__start(struct kvm_cpu *cpu)
 {
 	if (kvm__init_guest(cpu)) {
-		pr_err("guest init\n");
-	} else {
-		pr_info("guest init\n");
+		die_perror("guest init\n");
 	}
+
+	struct kvm_regs regs;
+	memset(&regs, 0, sizeof(regs));
+	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+		die_perror("KVM_SET_REGS failed");
+
+	// u64 pc;
+	// asm("dla $8, label\n\t"
+			// "sd $8, 0(%0)\n\t"
+			// :
+			// : "r"(&pc)
+			// : "memory");
+//
+	// asm("label:");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x0");
+  // asm(".word 0x42000028");
+
+  int x = 0b01000010000000000000000000101000;
+  u64 pc = (u64)&x;
+
+	regs.pc = pc + MIPS_XKPHYSX_CACHED;
+  printf("guest pc : %llx\n", regs.pc);
 
 	while (true) {
 		kvm_cpu__run(cpu);
 		switch (cpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HYPERCALL: {
+      die_perror("successed !\n");
 			if (syscall_emulation(cpu)) {
 				pr_err("syscall emulation");
 			}
 			break;
 		}
 		default:
+      pr_err("return code %d", cpu->kvm_run->exit_reason);
 			die_perror(
 				"TODO : there are so many exit reason that I didn't check");
 		}
 	}
+
+  die_perror("Host mode can't reach here\n");
 }
+
+
 
 static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 {
@@ -441,10 +480,6 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 
 static void kvm_cpu__setup_regs(struct kvm_cpu *vcpu)
 {
-	struct kvm_regs regs;
-
-	if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
-		die_perror("KVM_SET_REGS failed");
 }
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
