@@ -25,18 +25,40 @@ int proc_init(void)
 {
 	struct cp0 {
 		u64 pagegrain;
-	} p = { .pagegrain = 0 };
+		u64 hwrena;
+		u64 status;
+    u64 intctl;
+    u64 cause;
+    u64 prid;
+    u64 ebase;
+	} p;
+  memset(&p, 0 , sizeof(struct cp0));
+
+  if(sizeof(struct cp0) != 8 * 7){
+    pr_err("memory alignment error");
+    return 1;
+  }
 
 	asm(".set	push\n\t"
 	    ".set	mips64\n\t"
 	    "mfc0	$t0, $5, 1\n\t"
-	    "sw $t0, 0(%0)"
+	    "sw $t0, 0(%0)\n\t"
+	    "mfc0	$t0, $7, 0\n\t"
+	    "sw $t0, 8(%0)\n\t"
+	    "mfc0	$t0, $12, 0\n\t"
+	    "sw $t0, 16(%0)\n\t"
+	    "mfc0	$t0, $12, 1\n\t"
+	    "sw $t0, 24(%0)\n\t"
+	    "mfc0	$t0, $13, 0\n\t"
+	    "sw $t0, 32(%0)\n\t"
+	    "mfc0	$t0, $15, 0\n\t"
+	    "sw $t0, 40(%0)\n\t"
+	    "dmfc0	$t0, $15, 1\n\t"
+	    "sd $t0, 48(%0)"
 	    :
 	    : "r"(&p)
 	    : "memory");
-
-  pr_debug("pagegrain : %llx\n", bits(p.pagegrain));
-
+  pr_debug("value : 0x%llx\n", bits(p.ebase));
 	return 0;
 }
 

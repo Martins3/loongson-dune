@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <assert.h>
 #include "cp0.h"
 
 #ifndef LOONGSON
@@ -24,6 +25,7 @@ typedef unsigned long long u64;
 // It doesn't matter what KVM_VM_TYPE is, loongson just ignore it, see funtion :
 // /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
+#define PAGESIZE 1 << 14
 
 struct kvm {
 	int sys_fd;
@@ -37,16 +39,17 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	struct kvm_regs regs;
+  void * ebase;
 };
 
-#define KNRM  "\x1B[0m"
-#define KRED  "\x1B[31m"
-#define KGRN  "\x1B[32m"
-#define KYEL  "\x1B[33m"
-#define KBLU  "\x1B[34m"
-#define KMAG  "\x1B[35m"
-#define KCYN  "\x1B[36m"
-#define KWHT  "\x1B[37m"
+#define KNRM "\x1B[0m"
+#define KRED "\x1B[31m"
+#define KGRN "\x1B[32m"
+#define KYEL "\x1B[33m"
+#define KBLU "\x1B[34m"
+#define KMAG "\x1B[35m"
+#define KCYN "\x1B[36m"
+#define KWHT "\x1B[37m"
 
 void die_perror(const char *s)
 {
@@ -63,9 +66,9 @@ static void report(const char *prefix, const char *err, va_list params)
 
 static void error_builtin(const char *err, va_list params)
 {
-  printf("%s", KCYN);
+	printf("%s", KCYN);
 	report(" Error: ", err, params);
-  printf("%s", KNRM);
+	printf("%s", KNRM);
 }
 
 #ifdef __GNUC__
@@ -79,9 +82,9 @@ static void error_builtin(const char *err, va_list params)
 
 static NORETURN void die_builtin(const char *err, va_list params)
 {
-  printf("%s", KRED);
+	printf("%s", KRED);
 	report(" Fatal: ", err, params);
-  printf("%s", KNRM);
+	printf("%s", KNRM);
 	exit(128);
 }
 
@@ -203,9 +206,50 @@ static int setup_cache_routine()
 
 struct cp0_reg {
 	struct kvm_one_reg reg;
-  char name[100];
+	char name[100];
 	u64 v;
 };
+
+const u64 MIPS_XKPHYSX_CACHED = 0x9800000000000000;
+
+// TODO why kvmtool ignored PROT_EXEC ?
+#define PROT_RWX (PROT_READ | PROT_WRITE |PROT_EXEC)
+#define MAP_ANON_NORESERVE (MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE)
+
+static void alloc_ebase(struct kvm_cpu * cpu)
+{
+	void * addr = mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+  if(addr == NULL && ((u64)addr & 0xffff) != 0)
+    die_perror("alloc_ebase");
+  cpu->ebase = addr;
+}
+#define EBASE_TLB_OFFSET 0x0
+#define EBASE_XTLB_OFFSET 0x80
+#define EBASE_CACHE_OFFSET 0x100
+#define EBASE_GE_OFFSET 0x180
+
+static int init_ebase_tlb(struct kvm_cpu * cpu){
+  return -errno;
+}
+
+static int init_ebase_xtlb(struct kvm_cpu * cpu){
+  return -errno;
+}
+
+static int init_ebase_cache(struct kvm_cpu * cpu){
+  return -errno;
+}
+
+static int init_ebase_general(struct kvm_cpu * cpu){
+  return -errno;
+}
+
+#define CP0_INIT_REG(X)                                                        \
+	{                                                                      \
+		.reg = { .id = KVM_REG_MIPS_CP0_##X }, .name = #X,             \
+		.v = INIT_VALUE_##X                                                 \
+	}
+
 
 // TODO 验证一下
 // cpu_guest_has_contextconfig
@@ -213,57 +257,65 @@ struct cp0_reg {
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
+  alloc_ebase(cpu);
+  init_ebase_tlb(cpu);
+  init_ebase_xtlb(cpu);
+  init_ebase_cache(cpu);
+  init_ebase_general(cpu);
+
+  u64 INIT_VALUE_EBASE = (u64)cpu->ebase;
+
 	int i;
 	struct cp0_reg one_regs[] = {
-      { .reg = {.id = KVM_REG_MIPS_CP0_INDEX},  .name = "INDEX",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_RANDOM},  .name = "RANDOM",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO0},  .name = "ENTRYLO0",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYLO1},  .name = "ENTRYLO1",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONTEXT},  .name = "CONTEXT",  .v = 0x12345678}, 
-      { .reg = {.id = KVM_REG_MIPS_CP0_XCONTEXT},  .name = "XCONTEXT",  .v = 0x12345678}, // 6.2.4 Page-Table Access Helpers—Context and XContext
-      { .reg = {.id = KVM_REG_MIPS_CP0_PAGEMASK},  .name = "PAGEMASK",  .v = 0x12345678},
-
-      { .reg = {.id = KVM_REG_MIPS_CP0_USERLOCAL},  .name = "USERLOCAL",  .v = 0x12345678},
-
-      // 当前思路:
-      // - 可以不会触发 ri xi, 但是什么叫做采用不同的入口
-      //   - ebase 入口设计，现在的想法是，建立一个 memslot，将 gebase 放到 physical 的位置
-      { .reg = {.id = KVM_REG_MIPS_CP0_PAGEGRAIN},  .name = "PAGEGRAIN",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_PWBASE},  .name = "PWBASE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_PWFIELD},  .name = "PWFIELD",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_PWSIZE},  .name = "PWSIZE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_WIRED},  .name = "WIRED",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_PWCTL},  .name = "PWCTL",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_HWRENA},  .name = "HWRENA",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_BADVADDR},  .name = "BADVADDR",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTR},  .name = "BADINSTR",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_BADINSTRP},  .name = "BADINSTRP",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_COUNT},  .name = "COUNT",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_ENTRYHI},  .name = "ENTRYHI",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_COMPARE},  .name = "COMPARE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_STATUS},  .name = "STATUS",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_INTCTL},  .name = "INTCTL",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CAUSE},  .name = "CAUSE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_EPC},  .name = "EPC",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_PRID},  .name = "PRID",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_EBASE},  .name = "EBASE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG},  .name = "CONFIG",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG1},  .name = "CONFIG1",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG2},  .name = "CONFIG2",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG3},  .name = "CONFIG3",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG4},  .name = "CONFIG4",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG5},  .name = "CONFIG5",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG6},  .name = "CONFIG6",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_CONFIG7},  .name = "CONFIG7",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_GSCAUSE},  .name = "GSCAUSE",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_ERROREPC},  .name = "ERROREPC",  .v = 0x12345678},
-
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH1},  .name = "KSCRATCH1",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH2},  .name = "KSCRATCH2",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH3},  .name = "KSCRATCH3",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH4},  .name = "KSCRATCH4",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH5},  .name = "KSCRATCH5",  .v = 0x12345678},
-      { .reg = {.id = KVM_REG_MIPS_CP0_KSCRATCH6},  .name = "KSCRATCH6",  .v = 0x12345678},
+    CP0_INIT_REG(INDEX),
+    CP0_INIT_REG(RANDOM),
+    CP0_INIT_REG(ENTRYLO0),
+    CP0_INIT_REG(ENTRYLO1),
+    CP0_INIT_REG(CONTEXT),
+		// CP0_INIT_REG(CONTEXTCONFIG),
+    CP0_INIT_REG(USERLOCAL),
+		// CP0_INIT_REG(XCONTEXTCONFIG),
+		// CP0_INIT_REG(PAGEMASK),
+		CP0_INIT_REG(PAGEGRAIN),
+		// CP0_INIT_REG(SEGCTL0),
+		// CP0_INIT_REG(SEGCTL1),
+		// CP0_INIT_REG(SEGCTL2),
+    CP0_INIT_REG(PWBASE),
+    CP0_INIT_REG(PWFIELD),
+    CP0_INIT_REG(PWSIZE),
+    CP0_INIT_REG(WIRED),
+    CP0_INIT_REG(PWCTL),
+    CP0_INIT_REG(HWRENA),
+    CP0_INIT_REG(BADVADDR),
+    CP0_INIT_REG(BADINSTR),
+    CP0_INIT_REG(BADINSTRP),
+    CP0_INIT_REG(COUNT),
+    CP0_INIT_REG(ENTRYHI),
+    CP0_INIT_REG(COMPARE),
+    CP0_INIT_REG(STATUS),
+    CP0_INIT_REG(INTCTL),
+    CP0_INIT_REG(CAUSE),
+    CP0_INIT_REG(EPC),
+    CP0_INIT_REG(PRID),
+    CP0_INIT_REG(EBASE),
+		// CP0_INIT_REG(CONFIG),
+		// CP0_INIT_REG(CONFIG1),
+		// CP0_INIT_REG(CONFIG2),
+		// CP0_INIT_REG(CONFIG3),
+		// CP0_INIT_REG(CONFIG4),
+		// CP0_INIT_REG(CONFIG5),
+		// CP0_INIT_REG(CONFIG6),
+		// CP0_INIT_REG(CONFIG7),
+		// CP0_INIT_REG(MAARI),
+		// CP0_INIT_REG(XCONTEXT),
+		// CP0_INIT_REG(GSCAUSE),
+		// CP0_INIT_REG(ERROREPC),
+		// CP0_INIT_REG(KSCRATCH1),
+		// CP0_INIT_REG(KSCRATCH2),
+		// CP0_INIT_REG(KSCRATCH3),
+		// CP0_INIT_REG(KSCRATCH4),
+		// CP0_INIT_REG(KSCRATCH5),
+		// CP0_INIT_REG(KSCRATCH6),
 	};
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
@@ -273,7 +325,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0)
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-    else
+		else
 			pr_info("KVM_SET_ONE_REG %s", one_regs[i].name);
 	}
 	return -errno;
