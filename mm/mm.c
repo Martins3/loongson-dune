@@ -15,11 +15,21 @@ u64 bits(const u64 d){
   int i;
   for (i = 0; i < sizeof(u64) * 8; ++i) {
     if(((u64)1 << i) & d){
-      pr_debug("[%d]", i);
+      // pr_debug("[%d]", i);
     }
   }
   return d;
 }
+
+#undef offsetof
+#ifdef __compiler_offsetof
+#define offsetof(TYPE, MEMBER)	__compiler_offsetof(TYPE, MEMBER)
+#else
+#define offsetof(TYPE, MEMBER)	((size_t)&((TYPE *)0)->MEMBER)
+#endif
+
+#define BUILD_ASSERT(cond) do { (void) sizeof(char [1 - 2*!(cond)]); } while(0)
+
 
 int proc_init(void)
 {
@@ -31,13 +41,19 @@ int proc_init(void)
     u64 cause;
     u64 prid;
     u64 ebase;
+    u64 config;
+    u64 config1;
+    u64 config2;
+    u64 config3;
+    u64 config4;
+    u64 config5;
+    u64 config6;
+    u64 config7;
 	} p;
   memset(&p, 0 , sizeof(struct cp0));
 
-  if(sizeof(struct cp0) != 8 * 7){
-    pr_err("memory alignment error");
-    return 1;
-  }
+  BUILD_ASSERT(56 == offsetof(struct cp0, config));
+  BUILD_ASSERT(112 == offsetof(struct cp0, config7));
 
 	asm(".set	push\n\t"
 	    ".set	mips64\n\t"
@@ -54,11 +70,34 @@ int proc_init(void)
 	    "mfc0	$t0, $15, 0\n\t"
 	    "sw $t0, 40(%0)\n\t"
 	    "dmfc0	$t0, $15, 1\n\t"
-	    "sd $t0, 48(%0)"
+	    "sd $t0, 48(%0)\n\t"
+	    "mfc0	$t0, $16, 0\n\t"
+	    "sw $t0, 56(%0)\n\t"
+	    "mfc0	$t0, $16, 1\n\t"
+	    "sw $t0, 64(%0)\n\t"
+	    "mfc0	$t0, $16, 2\n\t"
+	    "sw $t0, 72(%0)\n\t"
+	    "mfc0	$t0, $16, 3\n\t"
+	    "sw $t0, 80(%0)\n\t"
+	    "mfc0	$t0, $16, 4\n\t"
+	    "sw $t0, 88(%0)\n\t"
+	    "mfc0	$t0, $16, 5\n\t"
+	    "sw $t0, 96(%0)\n\t"
+	    "mfc0	$t0, $16, 6\n\t"
+	    "sw $t0, 104(%0)\n\t"
+	    "mfc0	$t0, $16, 7\n\t"
+	    "sw $t0, 112(%0)\n\t"
 	    :
 	    : "r"(&p)
 	    : "memory");
-  pr_debug("value : 0x%llx\n", bits(p.ebase));
+  pr_debug("value : 0x%llx\n", bits(p.config));
+  pr_debug("value : 0x%llx\n", bits(p.config1));
+  pr_debug("value : 0x%llx\n", bits(p.config2));
+  pr_debug("value : 0x%llx\n", bits(p.config3));
+  pr_debug("value : 0x%llx\n", bits(p.config4));
+  pr_debug("value : 0x%llx\n", bits(p.config5));
+  pr_debug("value : 0x%llx\n", bits(p.config6));
+  pr_debug("value : 0x%llx\n", bits(p.config7));
 	return 0;
 }
 

@@ -298,7 +298,8 @@ static int init_cp0(struct kvm_cpu *cpu)
     CP0_INIT_REG(EPC),
     CP0_INIT_REG(PRID),
     CP0_INIT_REG(EBASE),
-		// CP0_INIT_REG(CONFIG),
+
+    // CP0_INIT_REG(CONFIG),
 		// CP0_INIT_REG(CONFIG1),
 		// CP0_INIT_REG(CONFIG2),
 		// CP0_INIT_REG(CONFIG3),
@@ -306,16 +307,19 @@ static int init_cp0(struct kvm_cpu *cpu)
 		// CP0_INIT_REG(CONFIG5),
 		// CP0_INIT_REG(CONFIG6),
 		// CP0_INIT_REG(CONFIG7),
+
 		// CP0_INIT_REG(MAARI),
-		// CP0_INIT_REG(XCONTEXT),
-		// CP0_INIT_REG(GSCAUSE),
-		// CP0_INIT_REG(ERROREPC),
-		// CP0_INIT_REG(KSCRATCH1),
-		// CP0_INIT_REG(KSCRATCH2),
-		// CP0_INIT_REG(KSCRATCH3),
-		// CP0_INIT_REG(KSCRATCH4),
-		// CP0_INIT_REG(KSCRATCH5),
-		// CP0_INIT_REG(KSCRATCH6),
+    
+    CP0_INIT_REG(XCONTEXT),
+    CP0_INIT_REG(GSCAUSE),
+    CP0_INIT_REG(ERROREPC),
+
+    CP0_INIT_REG(KSCRATCH1),
+    CP0_INIT_REG(KSCRATCH2),
+    CP0_INIT_REG(KSCRATCH3),
+    CP0_INIT_REG(KSCRATCH4),
+    CP0_INIT_REG(KSCRATCH5),
+    CP0_INIT_REG(KSCRATCH6),
 	};
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
@@ -345,11 +349,6 @@ static int init_simd()
 	return -errno;
 }
 
-static int init_config()
-{
-	return -errno;
-}
-
 static int kvm__init_guest(struct kvm_cpu *cpu)
 {
 	int ret = 0;
@@ -358,9 +357,6 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	if (ret < 0)
 		return ret;
 
-	ret = init_config();
-	if (ret < 0)
-		return ret;
 
 	return ret;
 }
