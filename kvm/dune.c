@@ -341,14 +341,14 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(STATUS),
 		CP0_INIT_REG(EBASE),
 
-    // CP0_INIT_REG(CONFIG),
-    // CP0_INIT_REG(CONFIG1),
-    // CP0_INIT_REG(CONFIG2),
-    // CP0_INIT_REG(CONFIG3),
-    // CP0_INIT_REG(CONFIG4),
-    // CP0_INIT_REG(CONFIG5),
-    // CP0_INIT_REG(CONFIG6),
-    // CP0_INIT_REG(CONFIG7),
+    CP0_INIT_REG(CONFIG),
+    CP0_INIT_REG(CONFIG1),
+    CP0_INIT_REG(CONFIG2),
+    CP0_INIT_REG(CONFIG3),
+    CP0_INIT_REG(CONFIG4),
+    CP0_INIT_REG(CONFIG5),
+    CP0_INIT_REG(CONFIG6),
+    CP0_INIT_REG(CONFIG7),
   };
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
@@ -412,7 +412,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 
 	struct kvm_regs regs;
 	memset(&regs, 0, sizeof(regs));
-	int x = 0b01000010000000000000000000101000;
+	u64 x = 0b01000010000000000000000000101000;
 	u64 pc = (u64)&x;
 
 	regs.pc = pc + MIPS_XKPHYSX_CACHED;
