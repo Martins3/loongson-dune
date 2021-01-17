@@ -1,5 +1,5 @@
 all: sync
-	gcc -DLOONGSON dune.c -o dune.out
+	gcc -DLOONGSON dune.c exception.S -o dune.out
 	./dune.out
 	sudo dmesg -c
 
