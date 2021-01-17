@@ -412,35 +412,22 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 
 	struct kvm_regs regs;
 	memset(&regs, 0, sizeof(regs));
-	u64 x = 0b01000010000000000000000000101000;
-	u64 pc = (u64)&x;
+	u64 pc;
+  asm goto("dla $8, %l[guest_entry]\n\t"
+  "sd $8, 0(%0)\n\t"
+  :
+  : "r"(&pc)
+  : "memory"
+  : guest_entry);
 
 	regs.pc = pc + MIPS_XKPHYSX_CACHED;
   regs.gpr[1] = 1;
   regs.gpr[2] = 2;
   regs.gpr[3] = 3;
-	printf("guest pc : %llx\n", regs.pc);
 
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 		die_perror("KVM_SET_REGS failed");
 
-	// u64 pc;
-	// asm("dla $8, label\n\t"
-	// "sd $8, 0(%0)\n\t"
-	// :
-	// : "r"(&pc)
-	// : "memory");
-	//
-	// asm("label:");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x0");
-	// asm(".word 0x42000028");
 
 	while (true) {
 		kvm_cpu__run(cpu);
@@ -459,6 +446,8 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 		}
 	}
 
+guest_entry:
+  asm(".word 0x42000028");
 	die_perror("Host mode can't reach here\n");
 }
 
