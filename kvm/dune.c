@@ -219,12 +219,20 @@ const u64 MIPS_XKPHYSX_CACHED = 0x9800000000000000;
 
 static void alloc_ebase(struct kvm_cpu *cpu)
 {
+  int i;
 	void *addr =
 		mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
-	cpu->ebase = addr;
-  printf("ebase address : %llx\n", (u64)addr);
+	cpu->ebase = addr + MIPS_XKPHYSX_CACHED;
+	int *x = (int *)addr;
+	for (i = 0; i <= 0x180; ++i) {
+		*x = 0;
+		x++;
+	}
+	printf("%x\n", *(int *)addr);
+	printf("%x\n", *((int *)addr + 1));
+	printf("ebase address : %llx\n", (u64)addr);
 }
 #define EBASE_TLB_OFFSET 0x0
 #define EBASE_XTLB_OFFSET 0x80
@@ -269,10 +277,11 @@ static int init_cp0(struct kvm_cpu *cpu)
 	init_ebase_cache(cpu);
 	init_ebase_general(cpu);
 
-	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
+  // u64 INIT_VALUE_EBASE = (u64)cpu->ebase;
+  u64 INIT_VALUE_EBASE = 0x1000;
 
 	int i;
-	struct cp0_reg one_regs[] = {
+	struct cp0_reg one_correct[] = {
 		CP0_INIT_REG(INDEX),
 		CP0_INIT_REG(RANDOM),
 		CP0_INIT_REG(ENTRYLO0),
@@ -281,7 +290,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 		// CP0_INIT_REG(CONTEXTCONFIG),
 		CP0_INIT_REG(USERLOCAL),
 		// CP0_INIT_REG(XCONTEXTCONFIG),
-    CP0_INIT_REG(PAGEMASK),
+		CP0_INIT_REG(PAGEMASK),
 		CP0_INIT_REG(PAGEGRAIN),
 		// CP0_INIT_REG(SEGCTL0),
 		// CP0_INIT_REG(SEGCTL1),
@@ -305,14 +314,14 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(PRID),
 		CP0_INIT_REG(EBASE),
 
-    CP0_INIT_REG(CONFIG),
-    CP0_INIT_REG(CONFIG1),
-    CP0_INIT_REG(CONFIG2),
-    CP0_INIT_REG(CONFIG3),
-    CP0_INIT_REG(CONFIG4),
-    CP0_INIT_REG(CONFIG5),
-    CP0_INIT_REG(CONFIG6),
-    CP0_INIT_REG(CONFIG7),
+		// CP0_INIT_REG(CONFIG),
+		// CP0_INIT_REG(CONFIG1),
+		// CP0_INIT_REG(CONFIG2),
+		// CP0_INIT_REG(CONFIG3),
+		// CP0_INIT_REG(CONFIG4),
+		// CP0_INIT_REG(CONFIG5),
+		// CP0_INIT_REG(CONFIG6),
+		// CP0_INIT_REG(CONFIG7),
 
 		// CP0_INIT_REG(MAARI),
 
@@ -328,6 +337,20 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(KSCRATCH6),
 	};
 
+	struct cp0_reg one_regs[] = {
+		CP0_INIT_REG(STATUS),
+		CP0_INIT_REG(EBASE),
+
+    // CP0_INIT_REG(CONFIG),
+    // CP0_INIT_REG(CONFIG1),
+    // CP0_INIT_REG(CONFIG2),
+    // CP0_INIT_REG(CONFIG3),
+    // CP0_INIT_REG(CONFIG4),
+    // CP0_INIT_REG(CONFIG5),
+    // CP0_INIT_REG(CONFIG6),
+    // CP0_INIT_REG(CONFIG7),
+  };
+
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
 		one_regs[i].reg.addr = (u64) & (one_regs[i].v);
 	}
@@ -335,9 +358,9 @@ static int init_cp0(struct kvm_cpu *cpu)
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &one_regs[i]) < 0) {
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-		} else {
-			pr_info("KVM_SET_ONE_REG %s", one_regs[i].name);
 			return -errno;
+		} else {
+			pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name, one_regs[i].v);
 		}
 	}
 	return 0;
@@ -383,60 +406,61 @@ void kvm_cpu__run(struct kvm_cpu *vcpu)
 
 int kvm_cpu__start(struct kvm_cpu *cpu)
 {
-	if (kvm__init_guest(cpu)) {
+	if (kvm__init_guest(cpu) < 0) {
 		die_perror("guest init\n");
 	}
 
 	struct kvm_regs regs;
 	memset(&regs, 0, sizeof(regs));
+	int x = 0b01000010000000000000000000101000;
+	u64 pc = (u64)&x;
+
+	regs.pc = pc + MIPS_XKPHYSX_CACHED;
+  regs.gpr[1] = 1;
+  regs.gpr[2] = 2;
+  regs.gpr[3] = 3;
+	printf("guest pc : %llx\n", regs.pc);
+
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 		die_perror("KVM_SET_REGS failed");
 
 	// u64 pc;
 	// asm("dla $8, label\n\t"
-			// "sd $8, 0(%0)\n\t"
-			// :
-			// : "r"(&pc)
-			// : "memory");
-//
+	// "sd $8, 0(%0)\n\t"
+	// :
+	// : "r"(&pc)
+	// : "memory");
+	//
 	// asm("label:");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x0");
-  // asm(".word 0x42000028");
-
-  int x = 0b01000010000000000000000000101000;
-  u64 pc = (u64)&x;
-
-	regs.pc = pc + MIPS_XKPHYSX_CACHED;
-  printf("guest pc : %llx\n", regs.pc);
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x0");
+	// asm(".word 0x42000028");
 
 	while (true) {
 		kvm_cpu__run(cpu);
 		switch (cpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HYPERCALL: {
-      die_perror("successed !\n");
+			die_perror("successed !\n");
 			if (syscall_emulation(cpu)) {
 				pr_err("syscall emulation");
 			}
 			break;
 		}
 		default:
-      pr_err("return code %d", cpu->kvm_run->exit_reason);
+			pr_err("return code %d", cpu->kvm_run->exit_reason);
 			die_perror(
 				"TODO : there are so many exit reason that I didn't check");
 		}
 	}
 
-  die_perror("Host mode can't reach here\n");
+	die_perror("Host mode can't reach here\n");
 }
-
-
 
 static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 {
@@ -474,6 +498,8 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 			     MAP_SHARED, vcpu->vcpu_fd, 0);
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
+  else
+    pr_info("struct kvm_run address %lx", vcpu->kvm_run);
 
 	return vcpu;
 }

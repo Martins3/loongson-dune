@@ -104,7 +104,10 @@ int proc_init(void)
 /* Function to remove the proc entry.  Call this when the module unloads. */
 void proc_cleanup(void)
 {
-	pr_debug("Bye\n");
+	pr_debug("Bye start\n");
+	// asm(".word 0x0");
+  asm(".word 0x42000028");
+	pr_debug("Bye end\n");
 }
 
 MODULE_LICENSE("GPL");
