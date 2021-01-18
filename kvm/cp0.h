@@ -61,16 +61,7 @@
 #define INIT_VALUE_ENTRYLO1 20000
 #define INIT_VALUE_CONTEXT 0 
 
-// 当前思路:
-// - 可以不会触发 ri xi, 但是什么叫做采用不同的入口
-//   - ebase 入口设计，现在的想法是，建立一个 memslot，将 gebase 放到 physical 的位置
-#define PAGEGRAIN_RIE 31
-#define PAGEGRAIN_XIE 30
-#define PAGEGRAIN_ELPA 29
-#define PAGEGRAIN_ESP 28
-#define PAGEGRAIN_IEC 27
-#define INIT_VALUE_PAGEGRAIN                                                       \
-	PAGEGRAIN_RIE | PAGEGRAIN_XIE | PAGEGRAIN_ELPA | PAGEGRAIN_IEC
+#define INIT_VALUE_PAGEGRAIN 0xe8000000
 
 #define INIT_VALUE_USERLOCAL 0
 #define INIT_VALUE_PAGEMASK 0
@@ -131,3 +122,83 @@
 #define INIT_VALUE_KSCRATCH4 0
 #define INIT_VALUE_KSCRATCH5 0
 #define INIT_VALUE_KSCRATCH6 0
+
+#define INVALID_CODEFLOW 0x42000028 | 1 << 11
+#define UNIMP_ERROR 0x42000028 | 2 << 11
+#define HYPERCALL_DEBUG 0x42000028
+
+/* Some CP0 registers */
+#define C0_INDEX	0, 0
+#define C0_ENTRYLO0	$2, 0
+#define C0_TCBIND	2, 2
+#define C0_ENTRYLO1	$3, 0
+#define C0_CONTEXT	4, 0
+#define C0_PAGEMASK	$5, 0
+#define C0_PAGEGRAIN $5, 1
+#define C0_PWBASE	5, 5
+#define C0_PWFIELD	5, 6
+#define C0_PWSIZE	5, 7
+#define C0_PWCTL	6, 6
+#define C0_BADVADDR	$8, 0
+#define C0_PGD		9, 7
+#define C0_ENTRYHI	$10, 0
+#define C0_EPC		14, 0
+#define C0_XCONTEXT	20, 0
+
+#define zero	$0	/* wired zero */
+#define AT	$1	/* assembler temp  - uppercase because of ".set at" */
+#define v0	$2	/* return value */
+#define v1	$3
+#define a0	$4	/* argument registers */
+#define a1	$5
+#define a2	$6
+#define a3	$7
+#define t0	$8	/* caller saved */
+#define t1	$9
+#define t2	$10
+#define t3	$11
+#define t4	$12
+#define ta0	$12
+#define t5	$13
+#define ta1	$13
+#define t6	$14
+#define ta2	$14
+#define t7	$15
+#define ta3	$15
+#define s0	$16	/* callee saved */
+#define s1	$17
+#define s2	$18
+#define s3	$19
+#define s4	$20
+#define s5	$21
+#define s6	$22
+#define s7	$23
+#define t8	$24	/* caller saved */
+#define t9	$25
+#define jp	$25	/* PIC jump register */
+#define k0	$26	/* kernel scratch */
+#define k1	$27
+#define gp	$28	/* global pointer */
+#define sp	$29	/* stack pointer */
+#define fp	$30	/* frame pointer */
+#define s8	$30	/* same like fp! */
+#define ra	$31	/* return address */
+
+#define EntryLo_C 3 << 3
+#define EntryLo_D 1 << 2
+#define EntryLo_V 1 << 1
+#define EntryLo_G 1 << 0
+#define EntryLo_FLAGS EntryLo_C | EntryLo_D | EntryLo_V | EntryLo_G
+#define EntryLo_FLAGS_LEN 6
+
+#define PFN_SHIFT 12
+
+#define EntryLo_VPN_SHITF (PFN_SHIFT - EntryLo_FLAGS_LEN)
+
+#define PAGEMASK_1G_MASK 0x7fffe000
+#define PAGEMASK_1G_MASK_LOW_BITS 0x1fff
+
+#define EntryLo1_1G_OFFSET 0x40000000 >> EntryLo_VPN_SHITF
+
+#define PAGESHIFT 14
+#define PAGESIZE 1 << PAGESHIFT

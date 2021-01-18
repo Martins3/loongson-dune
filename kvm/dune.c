@@ -26,7 +26,6 @@ typedef unsigned long long u64;
 // It doesn't matter what KVM_VM_TYPE is, loongson just ignore it, see funtion :
 // /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
-#define PAGESIZE 1 << 14
 
 struct kvm {
 	int sys_fd;
@@ -223,15 +222,7 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
 	cpu->ebase = addr;
-	// int *x = (int *)addr;
-	// for (i = 0; i <= 0x180; ++i) {
-		// if (i == 0x180)
-			// *x = 0x42000028 | 1 << 12;
-		// else
-			// *x = 0;
-		// x++;
-	// }
-	pr_info("ebase address : %llx\n", (u64)addr);
+	pr_info("ebase address : %llx", (u64)addr);
 }
 #define EBASE_TLB_OFFSET 0x0
 #define EBASE_XTLB_OFFSET 0x80
@@ -243,13 +234,14 @@ extern void ebase_tlb_entry_end(void);
 
 static int init_ebase_tlb(struct kvm_cpu *cpu)
 {
-
 }
 
+// TODO 随意的使用 k0, k1 的保证是什么 ?
 static int init_ebase_xtlb(struct kvm_cpu *cpu)
 {
-  memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin, ebase_tlb_entry_end - ebase_tlb_entry_begin);
-  return 0;
+	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
+	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
+	return 0;
 }
 
 static int init_ebase_cache(struct kvm_cpu *cpu)
@@ -285,7 +277,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 
 	int i;
-	struct cp0_reg one_correct[] = {
+	struct cp0_reg one_regs[] = {
 		CP0_INIT_REG(INDEX),
 		CP0_INIT_REG(RANDOM),
 		CP0_INIT_REG(ENTRYLO0),
@@ -318,16 +310,14 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(PRID),
 		CP0_INIT_REG(EBASE),
 
-		// CP0_INIT_REG(CONFIG),
-		// CP0_INIT_REG(CONFIG1),
-		// CP0_INIT_REG(CONFIG2),
-		// CP0_INIT_REG(CONFIG3),
-		// CP0_INIT_REG(CONFIG4),
-		// CP0_INIT_REG(CONFIG5),
-		// CP0_INIT_REG(CONFIG6),
-		// CP0_INIT_REG(CONFIG7),
-
-		// CP0_INIT_REG(MAARI),
+    CP0_INIT_REG(CONFIG),
+    CP0_INIT_REG(CONFIG1),
+    CP0_INIT_REG(CONFIG2),
+    CP0_INIT_REG(CONFIG3),
+    CP0_INIT_REG(CONFIG4),
+    CP0_INIT_REG(CONFIG5),
+    CP0_INIT_REG(CONFIG6),
+    CP0_INIT_REG(CONFIG7),
 
 		CP0_INIT_REG(XCONTEXT),
 		CP0_INIT_REG(GSCAUSE),
@@ -339,15 +329,6 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(KSCRATCH4),
 		CP0_INIT_REG(KSCRATCH5),
 		CP0_INIT_REG(KSCRATCH6),
-	};
-
-	struct cp0_reg one_regs[] = {
-		CP0_INIT_REG(STATUS),  CP0_INIT_REG(EBASE),
-
-		CP0_INIT_REG(CONFIG),  CP0_INIT_REG(CONFIG1),
-		CP0_INIT_REG(CONFIG2), CP0_INIT_REG(CONFIG3),
-		CP0_INIT_REG(CONFIG4), CP0_INIT_REG(CONFIG5),
-		CP0_INIT_REG(CONFIG6), CP0_INIT_REG(CONFIG7),
 	};
 
 	for (i = 0; i < sizeof(one_regs) / sizeof(struct cp0_reg); ++i) {
@@ -435,10 +416,11 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 		kvm_cpu__run(cpu);
 		switch (cpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HYPERCALL: {
-			die_perror("successed !\n");
-			if (syscall_emulation(cpu)) {
-				pr_err("syscall emulation");
-			}
+      pr_err("HYPERCALL");
+			// die_perror("successed !\n");
+			// if (syscall_emulation(cpu)) {
+				// pr_err("syscall emulation");
+			// }
 			break;
 		}
 		default:
@@ -449,8 +431,8 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 	}
 
 guest_entry:
-	asm(".word 0x42000028");
-	die_perror("Host mode can't reach here\n");
+  printf("Welcome !\n");
+	asm(".word 0x42000828");
 }
 
 static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)

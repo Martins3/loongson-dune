@@ -14,6 +14,7 @@ CFLAGS_mm.o := -DDEBUG -o0
 kbuild:
 	rsync --delete -avzh --exclude='/.git' --filter="dir-merge,- .gitignore" maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/dune/
 	make -C $(KDIR) M=`pwd`
+	sudo rmmod mm && sudo insmod mm.ko && sudo dmesg -c
 
 clean:
 	make -C $(KDIR) M=`pwd` clean

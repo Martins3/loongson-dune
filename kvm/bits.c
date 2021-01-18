@@ -13,7 +13,6 @@ u64 bits(const u64 d)
 }
 int main(int argc, char *argv[])
 {
-	u64 x = 0x40008010;
-	bits(x);
+  printf("%llx", 0x42000028 | (u64)1 << 11);
 	return 0;
 }

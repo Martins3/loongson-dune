@@ -11,11 +11,11 @@
 
 #define CP0_PAGEGRAIN $5, 1
 
-u64 bits(const u64 d){
+u64 mm_bits(const u64 d){
   int i;
   for (i = 0; i < sizeof(u64) * 8; ++i) {
     if(((u64)1 << i) & d){
-      // pr_debug("[%d]", i);
+      pr_debug("[%d]", i);
     }
   }
   return d;
@@ -49,11 +49,13 @@ int proc_init(void)
     u64 config5;
     u64 config6;
     u64 config7;
+    u64 entrylo0;
 	} p;
   memset(&p, 0 , sizeof(struct cp0));
 
   BUILD_ASSERT(56 == offsetof(struct cp0, config));
   BUILD_ASSERT(112 == offsetof(struct cp0, config7));
+  BUILD_ASSERT(120 == offsetof(struct cp0, entrylo0));
 
 	asm(".set	push\n\t"
 	    ".set	mips64\n\t"
@@ -87,17 +89,12 @@ int proc_init(void)
 	    "sw $t0, 104(%0)\n\t"
 	    "mfc0	$t0, $16, 7\n\t"
 	    "sw $t0, 112(%0)\n\t"
+	    "dmfc0	$t0, $2, 0\n\t"
+	    "sw $t0, 120(%0)\n\t"
 	    :
 	    : "r"(&p)
 	    : "memory");
-  pr_debug("value : 0x%llx\n", bits(p.config));
-  pr_debug("value : 0x%llx\n", bits(p.config1));
-  pr_debug("value : 0x%llx\n", bits(p.config2));
-  pr_debug("value : 0x%llx\n", bits(p.config3));
-  pr_debug("value : 0x%llx\n", bits(p.config4));
-  pr_debug("value : 0x%llx\n", bits(p.config5));
-  pr_debug("value : 0x%llx\n", bits(p.config6));
-  pr_debug("value : 0x%llx\n", bits(p.config7));
+  pr_debug("value : 0x%llx\n", mm_bits(p.pagegrain));
 	return 0;
 }
 
