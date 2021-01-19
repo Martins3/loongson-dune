@@ -8,6 +8,9 @@
 .global ebase_error_entry_begin
 .global ebase_error_entry_end
 
+.global ebase_general_entry_begin
+.global ebase_general_entry_end
+
 ebase_error_entry_begin:
 	.word INVALID_CODEFLOW
 ebase_error_entry_end:
@@ -35,3 +38,13 @@ ebase_tlb_entry_begin:
 	tlbwr
 	eret
 ebase_tlb_entry_end:
+
+ebase_general_entry_begin:
+.word 0x42000028
+dmfc0 k0, C0_EPC
+daddi k0, 4
+dmtc0 k0, C0_EPC
+
+eret
+ebase_general_entry_end:
+

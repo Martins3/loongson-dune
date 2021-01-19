@@ -38,7 +38,6 @@ struct kvm_cpu {
 	struct kvm *kvm;
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
-	struct kvm_regs regs;
 	void *ebase;
 };
 
@@ -120,13 +119,8 @@ void die(const char *err, ...)
 	va_end(params);
 }
 
-// TODO : use this to debug : KVM_GET_REG_LIST
-void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
+void dump_kvm_regs(int debug_fd, struct kvm_regs regs)
 {
-	struct kvm_regs regs;
-
-	if (ioctl(vcpu_fd, KVM_GET_REGS, &regs) < 0)
-		die("KVM_GET_REGS failed");
 	dprintf(debug_fd, "\n Registers:\n");
 	dprintf(debug_fd, " ----------\n");
 	dprintf(debug_fd, "$0   : %016llx %016llx %016llx %016llx\n",
@@ -175,6 +169,16 @@ void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
 	dprintf(debug_fd, "epc  : %016llx\n", (unsigned long long)regs.pc);
 
 	dprintf(debug_fd, "\n");
+}
+
+// TODO : use this to debug : KVM_GET_REG_LIST
+void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
+{
+	struct kvm_regs regs;
+
+	if (ioctl(vcpu_fd, KVM_GET_REGS, &regs) < 0)
+		die("KVM_GET_REGS failed");
+	dump_kvm_regs(debug_fd, regs);
 }
 
 static int kvm__run_guest()
@@ -229,16 +233,20 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 #define EBASE_CACHE_OFFSET 0x100
 #define EBASE_GE_OFFSET 0x180
 
-extern void ebase_tlb_entry_begin(void);
-extern void ebase_tlb_entry_end(void);
 
+extern void ebase_error_entry_begin(void);
+extern void ebase_error_entry_end(void);
 static int init_ebase_tlb(struct kvm_cpu *cpu)
 {
+	memcpy(cpu->ebase + EBASE_TLB_OFFSET, ebase_error_entry_begin,
+	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
 // TODO 随意的使用 k0, k1 的保证是什么 ?
 static int init_ebase_xtlb(struct kvm_cpu *cpu)
 {
+  extern void ebase_tlb_entry_begin(void);
+  extern void ebase_tlb_entry_end(void);
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
 	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
 	return 0;
@@ -246,12 +254,17 @@ static int init_ebase_xtlb(struct kvm_cpu *cpu)
 
 static int init_ebase_cache(struct kvm_cpu *cpu)
 {
-	return -errno;
+	memcpy(cpu->ebase + EBASE_CACHE_OFFSET, ebase_error_entry_begin,
+	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
 static int init_ebase_general(struct kvm_cpu *cpu)
 {
-	return -errno;
+  extern void ebase_general_entry_begin(void);
+  extern void ebase_general_entry_end(void);
+	memcpy(cpu->ebase + EBASE_GE_OFFSET, ebase_general_entry_begin,
+	       ebase_general_entry_end - ebase_general_entry_begin);
+	return 0;
 }
 
 #define CP0_INIT_REG(X)                                                        \
@@ -310,14 +323,14 @@ static int init_cp0(struct kvm_cpu *cpu)
 		CP0_INIT_REG(PRID),
 		CP0_INIT_REG(EBASE),
 
-    CP0_INIT_REG(CONFIG),
-    CP0_INIT_REG(CONFIG1),
-    CP0_INIT_REG(CONFIG2),
-    CP0_INIT_REG(CONFIG3),
-    CP0_INIT_REG(CONFIG4),
-    CP0_INIT_REG(CONFIG5),
-    CP0_INIT_REG(CONFIG6),
-    CP0_INIT_REG(CONFIG7),
+		CP0_INIT_REG(CONFIG),
+		CP0_INIT_REG(CONFIG1),
+		CP0_INIT_REG(CONFIG2),
+		CP0_INIT_REG(CONFIG3),
+		CP0_INIT_REG(CONFIG4),
+		CP0_INIT_REG(CONFIG5),
+		CP0_INIT_REG(CONFIG6),
+		CP0_INIT_REG(CONFIG7),
 
 		CP0_INIT_REG(XCONTEXT),
 		CP0_INIT_REG(GSCAUSE),
@@ -385,41 +398,90 @@ void kvm_cpu__run(struct kvm_cpu *vcpu)
 		die_perror("KVM_RUN");
 }
 
-int kvm_cpu__start(struct kvm_cpu *cpu)
+#undef offsetof
+#ifdef __compiler_offsetof
+#define offsetof(TYPE, MEMBER) __compiler_offsetof(TYPE, MEMBER)
+#else
+#define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
+#endif
+
+#define BUILD_ASSERT(cond)                                                     \
+	do {                                                                   \
+		(void)sizeof(char[1 - 2 * !(cond)]);                           \
+	} while (0)
+
+int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
-	struct kvm_regs regs;
-	u64 pc;
+	asm goto(".set noat\n\t"
+		 ".set noreorder\n\t"
+
+		 "sd $0, 0($a1)\n\t"
+		 "sd $1, 8($a1)\n\t"
+		 "sd $2, 16($a1)\n\t"
+		 "sd $3, 24($a1)\n\t"
+		 "sd $4, 32($a1)\n\t"
+		 "sd $5, 40($a1)\n\t"
+		 "sd $6, 48($a1)\n\t"
+		 "sd $7, 56($a1)\n\t"
+		 "sd $8, 64($a1)\n\t"
+		 "sd $9, 72($a1)\n\t"
+		 "sd $10, 80($a1)\n\t"
+		 "sd $11, 88($a1)\n\t"
+		 "sd $12, 96($a1)\n\t"
+		 "sd $13, 104($a1)\n\t"
+		 "sd $14, 112($a1)\n\t"
+		 "sd $15, 120($a1)\n\t"
+		 "sd $16, 128($a1)\n\t"
+		 "sd $17, 136($a1)\n\t"
+		 "sd $18, 144($a1)\n\t"
+		 "sd $19, 152($a1)\n\t"
+		 "sd $20, 160($a1)\n\t"
+		 "sd $21, 168($a1)\n\t"
+		 "sd $22, 176($a1)\n\t"
+		 "sd $23, 184($a1)\n\t"
+		 "sd $24, 192($a1)\n\t"
+		 "sd $25, 200($a1)\n\t"
+		 "sd $26, 208($a1)\n\t"
+		 "sd $27, 216($a1)\n\t"
+		 "sd $28, 224($a1)\n\t"
+		 "sd $29, 232($a1)\n\t"
+		 "sd $30, 240($a1)\n\t"
+		 "sd $31, 248($a1)\n\t"
+
+		 "mfhi $8\n\t"
+		 "sd $8, 256($a1)\n\t"
+
+		 "mflo $8\n\t"
+		 "sd $8, 264($a1)\n\t"
+
+		 "dla $8, %l[guest_entry]\n\t"
+		 "sd $8, 272($a1)\n\t"
+
+		 "ld $8, 64($a1)\n\t" // restore $8
+		 ".set at\n\t"
+		 ".set reorder\n\t"
+		 :
+		 :
+		 : "memory"
+		 : guest_entry);
+
+	dump_kvm_regs(STDOUT_FILENO, *regs);
+
 	if (kvm__init_guest(cpu) < 0) {
 		die_perror("guest init\n");
 	}
 
-	memset(&regs, 0, sizeof(regs));
-	// TODO $8 should be polluted, how to clob it ?
-	asm goto("dla $8, %l[guest_entry]\n\t"
-		 "sd $8, 0(%0)\n\t"
-		 :
-		 : "r"(&pc)
-		 : "memory"
-		 : guest_entry);
-
-	regs.pc = pc;
-	regs.gpr[1] = 1;
-	regs.gpr[2] = 2;
-	regs.gpr[3] = 3;
-
-	pr_info("guest_entry : %llx\n", pc);
-
-	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0)
 		die_perror("KVM_SET_REGS failed");
 
 	while (true) {
 		kvm_cpu__run(cpu);
 		switch (cpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HYPERCALL: {
-      pr_err("HYPERCALL");
+			pr_err("HYPERCALL");
 			// die_perror("successed !\n");
 			// if (syscall_emulation(cpu)) {
-				// pr_err("syscall emulation");
+			// pr_err("syscall emulation");
 			// }
 			break;
 		}
@@ -431,8 +493,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu)
 	}
 
 guest_entry:
-  printf("Welcome !\n");
-	asm(".word 0x42000828");
+	return 0;
 }
 
 static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
@@ -540,7 +601,20 @@ int kvm__init()
 	}
 
 	struct kvm_cpu *cpu = kvm_cpu__init(&dune, 0);
-	kvm_cpu__start(cpu);
+	struct kvm_regs regs;
+	memset(&regs, 0, sizeof(struct kvm_regs));
+	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
+	kvm_cpu__start(cpu, &regs);
+	asm("syscall");
+	asm("syscall");
+	asm("syscall");
+	asm("syscall");
+	asm("syscall");
+	asm("syscall");
+
+  mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+
+	asm(".word 0x42000828");
 
 // TODO maybe just exit, no need to close them
 err_vm_fd:

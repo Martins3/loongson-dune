@@ -142,7 +142,7 @@
 #define C0_BADVADDR	$8, 0
 #define C0_PGD		9, 7
 #define C0_ENTRYHI	$10, 0
-#define C0_EPC		14, 0
+#define C0_EPC		$14, 0
 #define C0_XCONTEXT	20, 0
 
 #define zero	$0	/* wired zero */
