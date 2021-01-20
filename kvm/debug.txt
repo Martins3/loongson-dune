@@ -1,2 +1,2 @@
-break kvm_cpu__start
 run
+bt

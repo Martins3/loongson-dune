@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "cp0.h"
+#include "syscall_arch.h"
 
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -375,11 +376,6 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	return 0;
 }
 
-int syscall_emulation(struct kvm_cpu *cpu)
-{
-	return -errno;
-}
-
 void kvm_cpu__run(struct kvm_cpu *vcpu)
 {
 	int err;
@@ -469,18 +465,14 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		kvm_cpu__run(cpu);
 		switch (cpu->kvm_run->exit_reason) {
 		case KVM_EXIT_HYPERCALL: {
-			pr_err("HYPERCALL");
-			// die_perror("successed !\n");
-			// if (syscall_emulation(cpu)) {
-			// pr_err("syscall emulation");
-			// }
+      extern long HYP_PARA[7];
+      HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
 			break;
 		}
 		default:
 			pr_err("return code %d", cpu->kvm_run->exit_reason);
 			die_perror(
 				"TODO : there are so many exit reason that I didn't check");
-      printf("fuck\n");
 		}
 	}
 
@@ -598,10 +590,13 @@ int kvm__init()
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	kvm_cpu__start(cpu, &regs);
 
-	asm(".word 0x42000028");
-	printf("dsfasdfadsfasdfuck you\n");
+	long len = printf("fork you\n");
+  printf("ret : %ld\n", len);
+	asm(".word 0x42000828");
+  // I will cause the guest exit !
 
 // TODO maybe just exit, no need to close them
+// and we can't close them !
 err_vm_fd:
 	close(dune.vm_fd);
 err_sys_fd:

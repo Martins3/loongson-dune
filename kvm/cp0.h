@@ -123,9 +123,10 @@
 #define INIT_VALUE_KSCRATCH5 0
 #define INIT_VALUE_KSCRATCH6 0
 
-#define INVALID_CODEFLOW 0x42000028 | 1 << 11
-#define UNIMP_ERROR 0x42000028 | 2 << 11
-#define HYPERCALL_DEBUG 0x42000028
+#define INVALID_CODEFLOW .word (0x42000028 | 1 << 11)
+#define UNIMP_ERROR .word (0x42000028 | 0xf << 11)
+#define HYPERCALL_DEBUG .word 0x42000028
+#define HYPERCALL .word 0x42000028
 
 /* Some CP0 registers */
 #define C0_INDEX	0, 0
@@ -142,6 +143,7 @@
 #define C0_BADVADDR	$8, 0
 #define C0_PGD		9, 7
 #define C0_ENTRYHI	$10, 0
+#define C0_CAUSE	$13, 0
 #define C0_EPC		$14, 0
 #define C0_XCONTEXT	20, 0
 
@@ -202,3 +204,32 @@
 
 #define PAGESHIFT 14
 #define PAGESIZE 1 << PAGESHIFT
+
+/*
+ * Cause.ExcCode trap codes.
+ */
+#define EXCCODE_INT		0	/* Interrupt pending */
+#define EXCCODE_MOD		1	/* TLB modified fault */
+#define EXCCODE_TLBL		2	/* TLB miss on load or ifetch */
+#define EXCCODE_TLBS		3	/* TLB miss on a store */
+#define EXCCODE_ADEL		4	/* Address error on a load or ifetch */
+#define EXCCODE_ADES		5	/* Address error on a store */
+#define EXCCODE_IBE		6	/* Bus error on an ifetch */
+#define EXCCODE_DBE		7	/* Bus error on a load or store */
+#define EXCCODE_SYS		8	/* System call */
+#define EXCCODE_BP		9	/* Breakpoint */
+#define EXCCODE_RI		10	/* Reserved instruction exception */
+#define EXCCODE_CPU		11	/* Coprocessor unusable */
+#define EXCCODE_OV		12	/* Arithmetic overflow */
+#define EXCCODE_TR		13	/* Trap instruction */
+#define EXCCODE_MSAFPE		14	/* MSA floating point exception */
+#define EXCCODE_FPE		15	/* Floating point exception */
+#define EXCCODE_TLBRI		19	/* TLB Read-Inhibit exception */
+#define EXCCODE_TLBXI		20	/* TLB Execution-Inhibit exception */
+#define EXCCODE_MSADIS		21	/* MSA disabled exception */
+#define EXCCODE_MDMX		22	/* MDMX unusable exception */
+#define EXCCODE_WATCH		23	/* Watch address reference */
+#define EXCCODE_MCHECK		24	/* Machine check */
+#define EXCCODE_THREAD		25	/* Thread exceptions (MT) */
+#define EXCCODE_DSPDIS		26	/* DSP disabled exception */
+#define EXCCODE_GE		27	/* Virtualized guest exception (VZ) */
