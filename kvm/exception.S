@@ -40,11 +40,10 @@ ebase_tlb_entry_begin:
 ebase_tlb_entry_end:
 
 ebase_general_entry_begin:
-.word 0x42000028
+.word 0x42002828
 dmfc0 k0, C0_EPC
 daddi k0, 4
 dmtc0 k0, C0_EPC
-
 eret
 ebase_general_entry_end:
 

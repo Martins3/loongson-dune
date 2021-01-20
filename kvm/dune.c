@@ -1,16 +1,17 @@
-#include <sys/mman.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <errno.h>
-#include <sys/ioctl.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <fcntl.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 #include "cp0.h"
+
+#include <sys/mman.h>
+#include <sys/ioctl.h>
 
 #ifndef LOONGSON
 #include "kvm.h"
@@ -70,16 +71,7 @@ static void error_builtin(const char *err, va_list params)
 	printf("%s", KNRM);
 }
 
-#ifdef __GNUC__
-#define NORETURN __attribute__((__noreturn__))
-#else
-#define NORETURN
-#ifndef __attribute__
-#define __attribute__(x)
-#endif
-#endif
-
-static NORETURN void die_builtin(const char *err, va_list params)
+static void die_builtin(const char *err, va_list params)
 {
 	printf("%s", KRED);
 	report(" Fatal: ", err, params);
@@ -233,7 +225,6 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 #define EBASE_CACHE_OFFSET 0x100
 #define EBASE_GE_OFFSET 0x180
 
-
 extern void ebase_error_entry_begin(void);
 extern void ebase_error_entry_end(void);
 static int init_ebase_tlb(struct kvm_cpu *cpu)
@@ -245,8 +236,8 @@ static int init_ebase_tlb(struct kvm_cpu *cpu)
 // TODO 随意的使用 k0, k1 的保证是什么 ?
 static int init_ebase_xtlb(struct kvm_cpu *cpu)
 {
-  extern void ebase_tlb_entry_begin(void);
-  extern void ebase_tlb_entry_end(void);
+	extern void ebase_tlb_entry_begin(void);
+	extern void ebase_tlb_entry_end(void);
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
 	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
 	return 0;
@@ -260,8 +251,8 @@ static int init_ebase_cache(struct kvm_cpu *cpu)
 
 static int init_ebase_general(struct kvm_cpu *cpu)
 {
-  extern void ebase_general_entry_begin(void);
-  extern void ebase_general_entry_end(void);
+	extern void ebase_general_entry_begin(void);
+	extern void ebase_general_entry_end(void);
 	memcpy(cpu->ebase + EBASE_GE_OFFSET, ebase_general_entry_begin,
 	       ebase_general_entry_end - ebase_general_entry_begin);
 	return 0;
@@ -489,6 +480,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 			pr_err("return code %d", cpu->kvm_run->exit_reason);
 			die_perror(
 				"TODO : there are so many exit reason that I didn't check");
+      printf("fuck\n");
 		}
 	}
 
@@ -605,16 +597,9 @@ int kvm__init()
 	memset(&regs, 0, sizeof(struct kvm_regs));
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	kvm_cpu__start(cpu, &regs);
-	asm("syscall");
-	asm("syscall");
-	asm("syscall");
-	asm("syscall");
-	asm("syscall");
-	asm("syscall");
 
-  mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
-
-	asm(".word 0x42000828");
+	asm(".word 0x42000028");
+	printf("dsfasdfadsfasdfuck you\n");
 
 // TODO maybe just exit, no need to close them
 err_vm_fd:

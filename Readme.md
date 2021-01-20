@@ -1,3 +1,8 @@
+## sync
+```
+rsync --delete -avzh --exclude='/.git' --filter="dir-merge,- .gitignore" maritns3@10.90.50.149:/home/maritns3/core/loongson-dune/3day/ /home/loongson/dune/
+```
+
 ## snippet 
 
 1. access_ok
