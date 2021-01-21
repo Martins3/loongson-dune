@@ -376,6 +376,48 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	return 0;
 }
 
+static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
+{
+	struct kvm_cpu *vcpu;
+
+	vcpu = calloc(1, sizeof(*vcpu));
+	if (!vcpu)
+		return NULL;
+
+	vcpu->kvm = kvm;
+
+	return vcpu;
+}
+
+struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
+{
+	struct kvm_cpu *vcpu;
+	int mmap_size;
+
+	vcpu = kvm_cpu__new(kvm);
+	if (!vcpu)
+		return NULL;
+
+	vcpu->cpu_id = cpu_id;
+
+	vcpu->vcpu_fd = ioctl(vcpu->kvm->vm_fd, KVM_CREATE_VCPU, cpu_id);
+	if (vcpu->vcpu_fd < 0)
+		die_perror("KVM_CREATE_VCPU ioctl");
+
+	mmap_size = ioctl(vcpu->kvm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
+	if (mmap_size < 0)
+		die_perror("KVM_GET_VCPU_MMAP_SIZE");
+
+	vcpu->kvm_run = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
+			     MAP_SHARED, vcpu->vcpu_fd, 0);
+	if (vcpu->kvm_run == MAP_FAILED)
+		die("unable to mmap vcpu fd");
+	else
+		pr_info("struct kvm_run address %lx", vcpu->kvm_run);
+
+	return vcpu;
+}
+
 void kvm_cpu__run(struct kvm_cpu *vcpu)
 {
 	int err;
@@ -462,68 +504,19 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		die_perror("KVM_SET_REGS failed");
 
 	while (true) {
-		kvm_cpu__run(cpu);
-		switch (cpu->kvm_run->exit_reason) {
-		case KVM_EXIT_HYPERCALL: {
-      extern long HYP_PARA[7];
-      HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
-			break;
+    int err;
+    err = ioctl(cpu->vcpu_fd, KVM_RUN, 0);
+    if (err < 0 && (errno != EINTR && errno != EAGAIN))
+      die_perror("KVM_RUN");
+		if(cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
+      die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
-		default:
-			pr_err("return code %d", cpu->kvm_run->exit_reason);
-			die_perror(
-				"TODO : there are so many exit reason that I didn't check");
-		}
+    extern long HYP_PARA[7];
+    HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
 	}
 
 guest_entry:
 	return 0;
-}
-
-static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
-{
-	struct kvm_cpu *vcpu;
-
-	vcpu = calloc(1, sizeof(*vcpu));
-	if (!vcpu)
-		return NULL;
-
-	vcpu->kvm = kvm;
-
-	return vcpu;
-}
-
-struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
-{
-	struct kvm_cpu *vcpu;
-	int mmap_size;
-
-	vcpu = kvm_cpu__new(kvm);
-	if (!vcpu)
-		return NULL;
-
-	vcpu->cpu_id = cpu_id;
-
-	vcpu->vcpu_fd = ioctl(vcpu->kvm->vm_fd, KVM_CREATE_VCPU, cpu_id);
-	if (vcpu->vcpu_fd < 0)
-		die_perror("KVM_CREATE_VCPU ioctl");
-
-	mmap_size = ioctl(vcpu->kvm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
-	if (mmap_size < 0)
-		die_perror("KVM_GET_VCPU_MMAP_SIZE");
-
-	vcpu->kvm_run = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
-			     MAP_SHARED, vcpu->vcpu_fd, 0);
-	if (vcpu->kvm_run == MAP_FAILED)
-		die("unable to mmap vcpu fd");
-	else
-		pr_info("struct kvm_run address %lx", vcpu->kvm_run);
-
-	return vcpu;
-}
-
-static void kvm_cpu__setup_regs(struct kvm_cpu *vcpu)
-{
 }
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
@@ -590,8 +583,11 @@ int kvm__init()
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	kvm_cpu__start(cpu, &regs);
 
-	long len = printf("fork you\n");
-  printf("ret : %ld\n", len);
+	char a [] ="fork you\n";
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+  // printf("ret : %ld\n", len);
 	asm(".word 0x42000828");
   // I will cause the guest exit !
 

@@ -10,8 +10,9 @@
 #include "syscall_arch.h"
 
 int main(int argc, char *argv[]){
-  char a [] = "fuckasdfasdfafa\n";
-  long ret = __syscall6(5001,  STDOUT_FILENO, (long)a, 12, 0, 0, 0);
-  printf("\n\n%ld", ret);
+	char a [] ="fork you\n";
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
   return 0;
 }
