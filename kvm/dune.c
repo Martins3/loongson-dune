@@ -215,7 +215,7 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 {
 	int i;
 	void *addr =
-		mmap(NULL, 1 << PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
 	cpu->ebase = addr;
@@ -439,6 +439,8 @@ void kvm_cpu__run(struct kvm_cpu *vcpu)
 		(void)sizeof(char[1 - 2 * !(cond)]);                           \
 	} while (0)
 
+extern void switch_stack(struct kvm_cpu * cpu, int vcpu_fd, u32 * exit_reason, u64 host_stack);
+
 int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
 	asm goto(".set noat\n\t"
@@ -500,21 +502,17 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		die_perror("guest init\n");
 	}
 
+
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0)
 		die_perror("KVM_SET_REGS failed");
 
-	while (true) {
-    int err;
-    err = ioctl(cpu->vcpu_fd, KVM_RUN, 0);
-    if (err < 0 && (errno != EINTR && errno != EAGAIN))
-      die_perror("KVM_RUN");
-		if(cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
-      die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
-		}
-    extern long HYP_PARA[7];
-    HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
-	}
+	void *host_stack = mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
+		die_perror("alloc host stack");
+  else
+    pr_info("host stack %llx", host_stack);
 
+  switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason), (u64)host_stack + PAGESIZE - 0x100);
 guest_entry:
 	return 0;
 }
@@ -587,8 +585,15 @@ int kvm__init()
   __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
   __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
   __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
+
+
+  printf("this is a guest world\n");
+  printf("this is a guest world\n");
+  printf("this is a guest world\n");
+  printf("this is a guest world\n");
+
   // printf("ret : %ld\n", len);
-	asm(".word 0x42000828");
+	asm(".word 0x42001828");
   // I will cause the guest exit !
 
 // TODO maybe just exit, no need to close them
@@ -600,6 +605,21 @@ err_sys_fd:
 err:
 	return ret;
 }
+
+void host_loop(struct kvm_cpu * cpu, int vcpu_fd, u32 * exit_reason){
+	while (true) {
+    int err;
+    err = ioctl(vcpu_fd, KVM_RUN, 0);
+    if (err < 0 && (errno != EINTR && errno != EAGAIN))
+      die_perror("KVM_RUN");
+		if(*exit_reason != KVM_EXIT_HYPERCALL) {
+      die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
+		}
+    extern long HYP_PARA[7];
+    HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
+	}
+}
+
 
 int main(int argc, char *argv[])
 {

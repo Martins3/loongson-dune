@@ -56,11 +56,18 @@ sd $9, 48(k0)
 HYPERCALL
 ld $2, 0(k0)
 dmfc0 k0, C0_EPC
-daddiu k0, zero, 4
+daddiu k0, k0, 4
 dmtc0 k0, C0_EPC
 eret
 .set pop
 ebase_general_entry_end:
+
+.global host_loop
+.global switch_stack
+switch_stack:
+	move sp, a3
+	dla t9, host_loop
+	bal host_loop 
 
 .global  HYP_PARA       # _num is a global symbol, when it is defined
 .data               # switch to read-write data section

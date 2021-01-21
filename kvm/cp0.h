@@ -203,7 +203,7 @@
 #define EntryLo1_1G_OFFSET 0x40000000 >> EntryLo_VPN_SHITF
 
 #define PAGESHIFT 14
-#define PAGESIZE 1 << PAGESHIFT
+#define PAGESIZE (1 << PAGESHIFT)
 
 /*
  * Cause.ExcCode trap codes.
