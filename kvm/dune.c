@@ -517,6 +517,15 @@ guest_entry:
 	return 0;
 }
 
+long __syscall_ret(unsigned long r)
+{
+	if (r > -4096UL) {
+		errno = -r;
+		return -1;
+	}
+	return r;
+}
+
 // TODO 关于信号之类，需要从 guest 中间借鉴
 // 而且需要提供两个入口，用于 fork
 // 似乎，当使用上 kvm 的时候，就不用再特意处理 signal 了
@@ -582,10 +591,6 @@ int kvm__init()
 	kvm_cpu__start(cpu, &regs);
 
 	char a [] ="fork you\n";
-  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
-  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
-  __syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3);
-
 
   printf("this is a guest world\n");
   printf("this is a guest world\n");
@@ -606,17 +611,35 @@ err:
 	return ret;
 }
 
+
 void host_loop(struct kvm_cpu * cpu, int vcpu_fd, u32 * exit_reason){
 	while (true) {
-    int err;
+    long err;
+
     err = ioctl(vcpu_fd, KVM_RUN, 0);
+
     if (err < 0 && (errno != EINTR && errno != EAGAIN))
       die_perror("KVM_RUN");
 		if(*exit_reason != KVM_EXIT_HYPERCALL) {
       die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
     extern long HYP_PARA[7];
-    HYP_PARA[0] = __syscall6(HYP_PARA[0], HYP_PARA[1], HYP_PARA[2], HYP_PARA[3], HYP_PARA[4], HYP_PARA[5], HYP_PARA[6]);
+
+    register long r4 __asm__("$4") =HYP_PARA[1];
+    register long r5 __asm__("$5") =HYP_PARA[2];
+    register long r6 __asm__("$6") =HYP_PARA[3];
+    register long r7 __asm__("$7") =HYP_PARA[4];
+    register long r8 __asm__("$8") =HYP_PARA[5];
+    register long r9 __asm__("$9") =HYP_PARA[6];
+    register long r2 __asm__("$2");
+	  __asm__ __volatile__ (
+		"daddu $2,$0,%2 ; syscall"
+		: "=&r"(r2), "+r"(r7)
+		: "ir"(HYP_PARA[0]), "0"(r2), "r"(r4), "r"(r5), "r"(r6), "r"(r8), "r"(r9)
+		: SYSCALL_CLOBBERLIST);
+
+    HYP_PARA[0] = r2;
+    HYP_PARA[4] = r7;
 	}
 }
 
