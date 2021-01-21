@@ -267,6 +267,13 @@ static int init_ebase_general(struct kvm_cpu *cpu)
 
 const u64 MIPS_XKPHYSX_CACHED = 0x9800000000000000;
 
+static inline u64 get_tp()
+{
+  u64 tp;
+	__asm__ ("rdhwr %0, $29" : "=r" (tp) );
+	return tp;
+}
+
 // TODO 验证一下
 // cpu_guest_has_contextconfig
 // cpu_guest_has_segments
@@ -280,6 +287,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 	init_ebase_general(cpu);
 
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
+  u64 INIT_VALUE_USERLOCAL = get_tp();
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -517,15 +525,6 @@ guest_entry:
 	return 0;
 }
 
-long __syscall_ret(unsigned long r)
-{
-	if (r > -4096UL) {
-		errno = -r;
-		return -1;
-	}
-	return r;
-}
-
 // TODO 关于信号之类，需要从 guest 中间借鉴
 // 而且需要提供两个入口，用于 fork
 // 似乎，当使用上 kvm 的时候，就不用再特意处理 signal 了
@@ -588,19 +587,18 @@ int kvm__init()
 	struct kvm_regs regs;
 	memset(&regs, 0, sizeof(struct kvm_regs));
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
+
 	kvm_cpu__start(cpu, &regs);
 
 	char a [] ="fork you\n";
 
-  printf("this is a guest world\n");
-  errno = -10;
-  printf("this is a guest world\n");
-  printf("this is a guest world\n");
-  printf("this is a guest world\n");
+  printf("liyawei\n");
+  printf("liyawei\n");
 
   // printf("ret : %ld\n", len);
-	asm(".word 0x42001828");
+	// asm(".word 0x42001828");
   // I will cause the guest exit !
+  return 0;
 
 // TODO maybe just exit, no need to close them
 // and we can't close them !
@@ -654,5 +652,5 @@ int main(int argc, char *argv[])
 		pr_err("KVM failed");
 	}
 
-	return 0;
+	return 12;
 }
