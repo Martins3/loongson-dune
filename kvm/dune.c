@@ -214,8 +214,7 @@ struct cp0_reg {
 static void alloc_ebase(struct kvm_cpu *cpu)
 {
 	int i;
-	void *addr =
-		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	void *addr = mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
 	cpu->ebase = addr;
@@ -269,8 +268,8 @@ const u64 MIPS_XKPHYSX_CACHED = 0x9800000000000000;
 
 static inline u64 get_tp()
 {
-  u64 tp;
-	__asm__ ("rdhwr %0, $29" : "=r" (tp) );
+	u64 tp;
+	__asm__("rdhwr %0, $29" : "=r"(tp));
 	return tp;
 }
 
@@ -287,7 +286,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 	init_ebase_general(cpu);
 
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
-  u64 INIT_VALUE_USERLOCAL = get_tp();
+	u64 INIT_VALUE_USERLOCAL = get_tp();
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -447,7 +446,8 @@ void kvm_cpu__run(struct kvm_cpu *vcpu)
 		(void)sizeof(char[1 - 2 * !(cond)]);                           \
 	} while (0)
 
-extern void switch_stack(struct kvm_cpu * cpu, int vcpu_fd, u32 * exit_reason, u64 host_stack);
+extern void switch_stack(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason,
+			 u64 host_stack);
 
 int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
@@ -510,17 +510,18 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		die_perror("guest init\n");
 	}
 
-
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0)
 		die_perror("KVM_SET_REGS failed");
 
-	void *host_stack = mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	void *host_stack =
+		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
 		die_perror("alloc host stack");
-  else
-    pr_info("host stack %llx", host_stack);
+	else
+		pr_info("host stack %llx", host_stack);
 
-  switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason), (u64)host_stack + PAGESIZE - 0x100);
+	switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason),
+		     (u64)host_stack + PAGESIZE - 0x100);
 guest_entry:
 	return 0;
 }
@@ -590,15 +591,15 @@ int kvm__init()
 
 	kvm_cpu__start(cpu, &regs);
 
-	char a [] ="fork you\n";
+	char a[] = "fork you\n";
 
-  printf("liyawei\n");
-  printf("liyawei\n");
+	printf("liyawei\n");
+	printf("liyawei\n");
 
-  // printf("ret : %ld\n", len);
+	// printf("ret : %ld\n", len);
 	// asm(".word 0x42001828");
-  // I will cause the guest exit !
-  return 0;
+	// I will cause the guest exit !
+	return 0;
 
 // TODO maybe just exit, no need to close them
 // and we can't close them !
@@ -610,38 +611,37 @@ err:
 	return ret;
 }
 
-
-void host_loop(struct kvm_cpu * cpu, int vcpu_fd, u32 * exit_reason){
+void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
+{
 	while (true) {
-    long err;
+		long err;
 
-    err = ioctl(vcpu_fd, KVM_RUN, 0);
+		err = ioctl(vcpu_fd, KVM_RUN, 0);
 
-    if (err < 0 && (errno != EINTR && errno != EAGAIN))
-      die_perror("KVM_RUN");
-		if(*exit_reason != KVM_EXIT_HYPERCALL) {
-      die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
+		if (err < 0 && (errno != EINTR && errno != EAGAIN))
+			die_perror("KVM_RUN");
+		if (*exit_reason != KVM_EXIT_HYPERCALL) {
+			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
-    extern long HYP_PARA[7];
+		extern long HYP_PARA[7];
 
-    register long r4 __asm__("$4") =HYP_PARA[1];
-    register long r5 __asm__("$5") =HYP_PARA[2];
-    register long r6 __asm__("$6") =HYP_PARA[3];
-    register long r7 __asm__("$7") =HYP_PARA[4];
-    register long r8 __asm__("$8") =HYP_PARA[5];
-    register long r9 __asm__("$9") =HYP_PARA[6];
-    register long r2 __asm__("$2");
-	  __asm__ __volatile__ (
-		"daddu $2,$0,%2 ; syscall"
-		: "=&r"(r2), "+r"(r7)
-		: "ir"(HYP_PARA[0]), "0"(r2), "r"(r4), "r"(r5), "r"(r6), "r"(r8), "r"(r9)
-		: SYSCALL_CLOBBERLIST);
+		register long r4 __asm__("$4") = HYP_PARA[1];
+		register long r5 __asm__("$5") = HYP_PARA[2];
+		register long r6 __asm__("$6") = HYP_PARA[3];
+		register long r7 __asm__("$7") = HYP_PARA[4];
+		register long r8 __asm__("$8") = HYP_PARA[5];
+		register long r9 __asm__("$9") = HYP_PARA[6];
+		register long r2 __asm__("$2");
+		__asm__ __volatile__("daddu $2,$0,%2 ; syscall"
+				     : "=&r"(r2), "+r"(r7)
+				     : "ir"(HYP_PARA[0]), "0"(r2), "r"(r4),
+				       "r"(r5), "r"(r6), "r"(r8), "r"(r9)
+				     : SYSCALL_CLOBBERLIST);
 
-    HYP_PARA[0] = r2;
-    HYP_PARA[4] = r7;
+		HYP_PARA[0] = r2;
+		HYP_PARA[4] = r7;
 	}
 }
-
 
 int main(int argc, char *argv[])
 {
