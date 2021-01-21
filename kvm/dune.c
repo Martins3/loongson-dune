@@ -593,6 +593,7 @@ int kvm__init()
 	char a [] ="fork you\n";
 
   printf("this is a guest world\n");
+  errno = -10;
   printf("this is a guest world\n");
   printf("this is a guest world\n");
   printf("this is a guest world\n");
