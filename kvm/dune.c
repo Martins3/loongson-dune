@@ -41,6 +41,7 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
+  long syscall_parameter[7];
 };
 
 #define KNRM "\x1B[0m"
@@ -287,6 +288,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
+  u64 INIT_VALUE_KSCRATCH1 = (u64)&(cpu->syscall_parameter);
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -380,6 +382,10 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	if (init_cp0(cpu) < 0)
 		return -errno;
 
+  init_fpu();
+
+  init_simd();
+
 	return 0;
 }
 
@@ -421,7 +427,6 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 		die("unable to mmap vcpu fd");
 	else
 		pr_info("struct kvm_run address %lx", vcpu->kvm_run);
-
 	return vcpu;
 }
 
@@ -526,6 +531,8 @@ guest_entry:
 	return 0;
 }
 
+int guest_execution();
+
 // TODO 关于信号之类，需要从 guest 中间借鉴
 // 而且需要提供两个入口，用于 fork
 // 似乎，当使用上 kvm 的时候，就不用再特意处理 signal 了
@@ -585,21 +592,13 @@ int kvm__init()
 	}
 
 	struct kvm_cpu *cpu = kvm_cpu__init(&dune, 0);
+
 	struct kvm_regs regs;
 	memset(&regs, 0, sizeof(struct kvm_regs));
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 
 	kvm_cpu__start(cpu, &regs);
-
-	char a[] = "fork you\n";
-
-	printf("liyawei\n");
-	printf("liyawei\n");
-
-	// printf("ret : %ld\n", len);
-	// asm(".word 0x42001828");
-	// I will cause the guest exit !
-	return 0;
+  exit(guest_execution());
 
 // TODO maybe just exit, no need to close them
 // and we can't close them !
@@ -611,35 +610,45 @@ err:
 	return ret;
 }
 
+int guest_execution(){
+	char a[] = "fork you\n";
+
+	printf("liyawei\n");
+	long len = printf("liyawei\n");
+  printf("ret : %ld\n", len);
+  scanf("%ld", &len);
+  printf("ret : %ld\n", len);
+	// asm(".word 0x42001828");
+	// I will cause the guest exit !
+	return 2;
+}
+
 void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 {
 	while (true) {
-		long err;
-
-		err = ioctl(vcpu_fd, KVM_RUN, 0);
+		long err = ioctl(vcpu_fd, KVM_RUN, 0);
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN))
 			die_perror("KVM_RUN");
 		if (*exit_reason != KVM_EXIT_HYPERCALL) {
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
-		extern long HYP_PARA[7];
 
-		register long r4 __asm__("$4") = HYP_PARA[1];
-		register long r5 __asm__("$5") = HYP_PARA[2];
-		register long r6 __asm__("$6") = HYP_PARA[3];
-		register long r7 __asm__("$7") = HYP_PARA[4];
-		register long r8 __asm__("$8") = HYP_PARA[5];
-		register long r9 __asm__("$9") = HYP_PARA[6];
+		register long r4 __asm__("$4") = cpu->syscall_parameter[1];
+		register long r5 __asm__("$5") = cpu->syscall_parameter[2];
+		register long r6 __asm__("$6") = cpu->syscall_parameter[3];
+		register long r7 __asm__("$7") = cpu->syscall_parameter[4];
+		register long r8 __asm__("$8") = cpu->syscall_parameter[5];
+		register long r9 __asm__("$9") = cpu->syscall_parameter[6];
 		register long r2 __asm__("$2");
 		__asm__ __volatile__("daddu $2,$0,%2 ; syscall"
 				     : "=&r"(r2), "+r"(r7)
-				     : "ir"(HYP_PARA[0]), "0"(r2), "r"(r4),
+				     : "ir"(cpu->syscall_parameter[0]), "0"(r2), "r"(r4),
 				       "r"(r5), "r"(r6), "r"(r8), "r"(r9)
 				     : SYSCALL_CLOBBERLIST);
 
-		HYP_PARA[0] = r2;
-		HYP_PARA[4] = r7;
+		cpu->syscall_parameter[0] = r2;
+		cpu->syscall_parameter[4] = r7;
 	}
 }
 

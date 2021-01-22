@@ -8,6 +8,7 @@ ebase_error_entry_end:
 .global ebase_tlb_entry_begin
 .global ebase_tlb_entry_end
 ebase_tlb_entry_begin:
+
 	mfc0 k0, C0_PAGEGRAIN
 	or k0, (0x1 << 29)
 	mtc0 k0, C0_PAGEGRAIN
@@ -31,6 +32,7 @@ ebase_tlb_entry_begin:
 	eret
 ebase_tlb_entry_end:
 
+.extern  HYP_PARA       # _num is a global symbol, when it is defined
 
 .global ebase_general_entry_begin
 .global ebase_general_entry_end
@@ -45,7 +47,7 @@ beq k1, zero, syscall
 nop
 INVALID_CODEFLOW
 syscall:
-dla k0, HYP_PARA
+dmfc0 k0, C0_KSCRATCH1
 sd $2, 0(k0)
 sd $4, 8(k0)
 sd $5, 16(k0)
@@ -69,15 +71,3 @@ switch_stack:
 	move sp, a3
 	dla t9, host_loop
 	bal host_loop 
-
-.global  HYP_PARA       # _num is a global symbol, when it is defined
-.data               # switch to read-write data section
-HYP_PARA:
-.align 8
-.dword  0
-.dword  0
-.dword  0
-.dword  0
-.dword  0
-.dword  0
-.dword  0

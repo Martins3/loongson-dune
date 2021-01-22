@@ -4,6 +4,7 @@ all: dune.out
 
 dune.out: sync 
 	# gcc -static -g -DLOONGSON dune.c exception.S -o dune.out
+	# gcc -g -DLOONGSON dune.c exception.S -o dune.out
 	# gcc -L/home/loongson/musl/lib/libc.a -g -DLOONGSON dune.c exception.S -o dune.out
 	# /usr/local/musl/bin/musl-gcc -static -g -DLOONGSON dune.c exception.S -o dune.out
 	

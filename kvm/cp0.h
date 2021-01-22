@@ -116,7 +116,7 @@
 #define INIT_VALUE_GSCAUSE 0
 #define INIT_VALUE_ERROREPC 0
 
-#define INIT_VALUE_KSCRATCH1 0
+// #define INIT_VALUE_KSCRATCH1 0
 #define INIT_VALUE_KSCRATCH2 0
 #define INIT_VALUE_KSCRATCH3 0
 #define INIT_VALUE_KSCRATCH4 0
@@ -146,6 +146,7 @@
 #define C0_CAUSE	$13, 0
 #define C0_EPC		$14, 0
 #define C0_XCONTEXT	20, 0
+#define C0_KSCRATCH1 $31, 2
 
 #define zero	$0	/* wired zero */
 #define AT	$1	/* assembler temp  - uppercase because of ".set at" */
