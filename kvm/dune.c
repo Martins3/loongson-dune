@@ -526,7 +526,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		pr_info("host stack %llx", host_stack);
 
 	switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason),
-		     (u64)host_stack + PAGESIZE - 0x100);
+		     (u64)host_stack + PAGESIZE);
 guest_entry:
 	return 0;
 }
@@ -627,7 +627,6 @@ int guest_execution()
  * unsigned long, tls)
  *
  * SYSCALL_DEFINE2(clone3, struct clone_args __user *, uargs, size_t, size)
- *
  */
 
 struct clone3_args {
@@ -647,29 +646,72 @@ struct clone3_args {
 	u64 set_tid_size; /* Number of elements in set_tid */
 };
 
-
 void do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu);
-
 
 struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu)
 {
 }
 
+
+typedef int CHILD_ENTRY_PTR(struct kvm_cpu *cpu);
+
+// TODO simplified the mmap
+int child_entry(struct kvm_cpu *cpu)
+{
+	void *host_stack =
+		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
+		die_perror("alloc host stack");
+	else
+		pr_info("host stack %llx", host_stack);
+
+	// TODO setup children sp register
+	// TODO setup children two return register
+
+	switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason),
+		     (u64)host_stack + PAGESIZE);
+}
+
+extern void dune_clone(u64 r4, u64 r5, u64 r6, u64 r7,
+				    u64 r8, u64 r9, CHILD_ENTRY_PTR entry, u64 child_stack);
+
+void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu, u64 child_stack)
+{
+	u64 r4 = parent_cpu->syscall_parameter[1];
+	u64 r5 = parent_cpu->syscall_parameter[2];
+	u64 r6 = parent_cpu->syscall_parameter[3];
+	u64 r7 = parent_cpu->syscall_parameter[4];
+	u64 r8 = parent_cpu->syscall_parameter[5];
+	u64 r9 = parent_cpu->syscall_parameter[6];
+  dune_clone(r4, r5, r6, r7, r8, r9, child_entry, child_stack);
+}
+
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
+// TODO maybe stack is invalid, just segment fault is too stupid
 void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu);
 	if (child_cpu == NULL)
 		die_perror("DUP_VCPU");
 
-	if (sysno == SYS_FORK)
-		return do_syscall6(parent_cpu, child_cpu);
+	if (sysno == SYS_CLONE) {
+		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
+		if (child_stack_pointer) {
+      emulate_fork_with_new_stack(parent_cpu, child_stack_pointer);
+			return;
+		}
+	}
 
-	if (sysno == SYS_CLONE){
+	if (sysno == SYS_CLONE3) {
+		struct clone3_args *args =
+			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
+		if (args->stack != 0) {
+      emulate_fork_with_new_stack(parent_cpu, args->stack + args->stack_size);
+			return;
+		}
+	}
 
-  }
-
-  if(sysno == SYS_CLONE3)
+	do_syscall6(parent_cpu, child_cpu);
 }
 
 // if (sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3)
@@ -679,7 +721,7 @@ void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 void do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
 {
 	register long r4 __asm__("$4") = cpu->syscall_parameter[1];
-  register long r5 __asm__("$5") = cpu->syscall_parameter[2];
+	register long r5 __asm__("$5") = cpu->syscall_parameter[2];
 	register long r6 __asm__("$6") = cpu->syscall_parameter[3];
 	register long r7 __asm__("$7") = cpu->syscall_parameter[4];
 	register long r8 __asm__("$8") = cpu->syscall_parameter[5];
@@ -695,7 +737,7 @@ void do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
 	if (child_cpu != NULL && r2 == 0 && r7 == 0) {
 		child_cpu->syscall_parameter[0] = r2;
 		child_cpu->syscall_parameter[4] = r7;
-    return;
+		return;
 	}
 
 	cpu->syscall_parameter[0] = r2;

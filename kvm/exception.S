@@ -71,3 +71,33 @@ switch_stack:
 	move sp, a3
 	dla t9, host_loop
 	bal host_loop 
+
+
+// TODO @function , maybe add this to other functions too
+.set	noreorder
+.global	dune_clone
+.type	dune_clone,@function
+__clone:
+	# Save function pointer and argument pointer on new thread stack
+	and	$11, $11, -8	# aligning stack to double word
+	dsubu	$11, $11, 8
+	sd	$10, 0($11)	# save function pointer
+
+	li	$2, 5055
+	syscall
+	beq	$7, $0, 1f
+	nop
+	jr	$ra
+	dsubu	$2, $0, $2
+// parent return
+1:	beq	$2, $0, 1f
+	nop
+	jr	$ra
+	nop
+// child gotos a new function
+1:	ld	$25, 0($sp)	# function pointer
+	jalr	$25		# call the user's function
+	nop
+	move 	$4, $2
+	li	$2, 5058
+	syscall
