@@ -234,3 +234,22 @@
 #define EXCCODE_THREAD		25	/* Thread exceptions (MT) */
 #define EXCCODE_DSPDIS		26	/* DSP disabled exception */
 #define EXCCODE_GE		27	/* Virtualized guest exception (VZ) */
+
+
+
+/**
+ * copied from https://github.com/torvalds/linux/arch/mips/kernel/syscalls/syscall_n64.tbl
+ * 55	n64	clone				__sys_clone
+ * 56	n64	fork				__sys_fork
+ * 57	n64	execve			sys_execve
+ * 270 n64	kexec_load			sys_kexec_load
+ * 316 n64	execveat			sys_execveat
+ * 435 n64	clone3		__sys_clone3 
+ * */
+#define MIPS_N64_OFFSET 5000
+#define SYS_CLONE (MIPS_N64_OFFSET + 55)
+#define SYS_FORK (MIPS_N64_OFFSET + 56)
+#define SYS_EXECVE (MIPS_N64_OFFSET + 57)
+#define SYS_EXECLOAD (MIPS_N64_OFFSET + 270)
+#define SYS_EXECAT (MIPS_N64_OFFSET + 316)
+#define SYS_CLONE3 (MIPS_N64_OFFSET + 435)

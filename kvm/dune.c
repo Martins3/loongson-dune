@@ -41,7 +41,7 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
-  long syscall_parameter[7];
+	long syscall_parameter[7];
 };
 
 #define KNRM "\x1B[0m"
@@ -288,7 +288,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
-  u64 INIT_VALUE_KSCRATCH1 = (u64)&(cpu->syscall_parameter);
+	u64 INIT_VALUE_KSCRATCH1 = (u64) & (cpu->syscall_parameter);
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -382,9 +382,9 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	if (init_cp0(cpu) < 0)
 		return -errno;
 
-  init_fpu();
+	init_fpu();
 
-  init_simd();
+	init_simd();
 
 	return 0;
 }
@@ -598,10 +598,8 @@ int kvm__init()
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 
 	kvm_cpu__start(cpu, &regs);
-  exit(guest_execution());
+	exit(guest_execution());
 
-// TODO maybe just exit, no need to close them
-// and we can't close them !
 err_vm_fd:
 	close(dune.vm_fd);
 err_sys_fd:
@@ -610,45 +608,121 @@ err:
 	return ret;
 }
 
-int guest_execution(){
+int guest_execution()
+{
 	char a[] = "fork you\n";
 
 	printf("liyawei\n");
 	long len = printf("liyawei\n");
-  printf("ret : %ld\n", len);
-  scanf("%ld", &len);
-  printf("ret : %ld\n", len);
-	// asm(".word 0x42001828");
-	// I will cause the guest exit !
-	return 2;
+	printf("ret : %ld\n", len);
+	return 5;
+}
+
+/** 
+ * copied form : https://github.com/torvalds/linux/blob/master/kernel/fork.c
+ *
+ * SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
+ * int __user *, parent_tidptr,
+ * int __user *, child_tidptr,
+ * unsigned long, tls)
+ *
+ * SYSCALL_DEFINE2(clone3, struct clone_args __user *, uargs, size_t, size)
+ *
+ */
+
+struct clone3_args {
+	u64 flags; /* Flags bit mask */
+	u64 pidfd; /* Where to store PID file descriptor
+                                    (pid_t *) */
+	u64 child_tid; /* Where to store child TID,
+                                    in child's memory (pid_t *) */
+	u64 parent_tid; /* Where to store child TID,
+                                    in parent's memory (int *) */
+	u64 exit_signal; /* Signal to deliver to parent on
+                                    child termination */
+	u64 stack; /* Pointer to lowest byte of stack */
+	u64 stack_size; /* Size of stack */
+	u64 tls; /* Location of new TLS */
+	u64 set_tid; /* Pointer to a pid_t array */
+	u64 set_tid_size; /* Number of elements in set_tid */
+};
+
+
+void do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu);
+
+
+struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu)
+{
+}
+
+// sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
+void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
+{
+	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu);
+	if (child_cpu == NULL)
+		die_perror("DUP_VCPU");
+
+	if (sysno == SYS_FORK)
+		return do_syscall6(parent_cpu, child_cpu);
+
+	if (sysno == SYS_CLONE){
+
+  }
+
+  if(sysno == SYS_CLONE3)
+}
+
+// if (sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3)
+// if (r2 == 0 && r7 == 0)
+// setup_children(cpu);
+
+void do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
+{
+	register long r4 __asm__("$4") = cpu->syscall_parameter[1];
+  register long r5 __asm__("$5") = cpu->syscall_parameter[2];
+	register long r6 __asm__("$6") = cpu->syscall_parameter[3];
+	register long r7 __asm__("$7") = cpu->syscall_parameter[4];
+	register long r8 __asm__("$8") = cpu->syscall_parameter[5];
+	register long r9 __asm__("$9") = cpu->syscall_parameter[6];
+	register long r2 __asm__("$2");
+
+	__asm__ __volatile__("daddu $2,$0,%2 ; syscall"
+			     : "=&r"(r2), "+r"(r7)
+			     : "ir"(cpu->syscall_parameter[0]), "0"(r2),
+			       "r"(r4), "r"(r5), "r"(r6), "r"(r8), "r"(r9)
+			     : SYSCALL_CLOBBERLIST);
+
+	if (child_cpu != NULL && r2 == 0 && r7 == 0) {
+		child_cpu->syscall_parameter[0] = r2;
+		child_cpu->syscall_parameter[4] = r7;
+    return;
+	}
+
+	cpu->syscall_parameter[0] = r2;
+	cpu->syscall_parameter[4] = r7;
 }
 
 void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 {
 	while (true) {
 		long err = ioctl(vcpu_fd, KVM_RUN, 0);
+		long sysno = cpu->syscall_parameter[0];
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN))
 			die_perror("KVM_RUN");
-		if (*exit_reason != KVM_EXIT_HYPERCALL) {
+
+		if (*exit_reason != KVM_EXIT_HYPERCALL)
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
-		}
 
-		register long r4 __asm__("$4") = cpu->syscall_parameter[1];
-		register long r5 __asm__("$5") = cpu->syscall_parameter[2];
-		register long r6 __asm__("$6") = cpu->syscall_parameter[3];
-		register long r7 __asm__("$7") = cpu->syscall_parameter[4];
-		register long r8 __asm__("$8") = cpu->syscall_parameter[5];
-		register long r9 __asm__("$9") = cpu->syscall_parameter[6];
-		register long r2 __asm__("$2");
-		__asm__ __volatile__("daddu $2,$0,%2 ; syscall"
-				     : "=&r"(r2), "+r"(r7)
-				     : "ir"(cpu->syscall_parameter[0]), "0"(r2), "r"(r4),
-				       "r"(r5), "r"(r6), "r"(r8), "r"(r9)
-				     : SYSCALL_CLOBBERLIST);
+		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |
+		    sysno == SYS_EXECLOAD)
+			die_perror("Unsupported syscall");
 
-		cpu->syscall_parameter[0] = r2;
-		cpu->syscall_parameter[4] = r7;
+		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
+		    sysno == SYS_CLONE3)
+			emulate_fork(cpu, sysno);
+		else
+			do_syscall6(cpu, NULL);
 	}
 }
 
@@ -662,4 +736,9 @@ int main(int argc, char *argv[])
 	}
 
 	return 12;
+}
+
+// mabye a epecial hypercall can lead to escape the process
+void escape()
+{
 }
