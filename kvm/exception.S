@@ -2,7 +2,7 @@
 .global ebase_error_entry_begin
 .global ebase_error_entry_end
 ebase_error_entry_begin:
-INVALID_CODEFLOW
+INVALID_CODEFLOW_1
 ebase_error_entry_end:
 
 .global ebase_tlb_entry_begin
@@ -32,8 +32,6 @@ ebase_tlb_entry_begin:
 	eret
 ebase_tlb_entry_end:
 
-.extern  HYP_PARA       # _num is a global symbol, when it is defined
-
 .global ebase_general_entry_begin
 .global ebase_general_entry_end
 ebase_general_entry_begin:
@@ -45,7 +43,7 @@ dsrl k1, k1, 2
 xor k1, k1, EXCCODE_SYS 
 beq k1, zero, syscall
 nop
-INVALID_CODEFLOW
+INVALID_CODEFLOW_2
 syscall:
 dmfc0 k0, C0_KSCRATCH1
 sd $2, 0(k0)
@@ -62,6 +60,7 @@ dmfc0 k0, C0_EPC
 daddiu k0, k0, 4
 dmtc0 k0, C0_EPC
 eret
+
 .set pop
 ebase_general_entry_end:
 
@@ -77,25 +76,21 @@ switch_stack:
 .set	noreorder
 .global	dune_clone
 .type	dune_clone,@function
-__clone:
-	# Save function pointer and argument pointer on new thread stack
-	and	$11, $11, -8	# aligning stack to double word
-	dsubu	$11, $11, 8
-	sd	$10, 0($11)	# save function pointer
-
+dune_clone:
 	li	$2, 5055
 	syscall
 	beq	$7, $0, 1f
 	nop
-	jr	$ra
+	jr	ra
 	dsubu	$2, $0, $2
 // parent return
 1:	beq	$2, $0, 1f
 	nop
-	jr	$ra
+	jr	ra
 	nop
 // child gotos a new function
-1:	ld	$25, 0($sp)	# function pointer
+1:	ld	$25, 0(sp)	# function pointer
+	ld	$4, 8(sp)	# argument pointer
 	jalr	$25		# call the user's function
 	nop
 	move 	$4, $2

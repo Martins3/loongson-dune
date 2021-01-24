@@ -123,7 +123,9 @@
 #define INIT_VALUE_KSCRATCH5 0
 #define INIT_VALUE_KSCRATCH6 0
 
-#define INVALID_CODEFLOW .word (0x42000028 | 1 << 11)
+#define INVALID_CODEFLOW_1 .word (0x42000028 | 1 << 11)
+#define INVALID_CODEFLOW_2 .word (0x42000028 | 2 << 11)
+#define INVALID_CODEFLOW_3 .word (0x42000028 | 3 << 11)
 #define UNIMP_ERROR .word (0x42000028 | 0xf << 11)
 #define HYPERCALL_DEBUG .word 0x42000028
 #define HYPERCALL .word 0x42000028
@@ -147,6 +149,7 @@
 #define C0_EPC		$14, 0
 #define C0_XCONTEXT	20, 0
 #define C0_KSCRATCH1 $31, 2
+#define C0_KSCRATCH2 $31, 3
 
 #define zero	$0	/* wired zero */
 #define AT	$1	/* assembler temp  - uppercase because of ".set at" */
