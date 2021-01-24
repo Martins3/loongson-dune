@@ -13,6 +13,7 @@
 static int childFunc(void *arg)
 {
 	printf("Child:  PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
+  printf("hello, this is a child process\n");
 	return 0;
 }
 
@@ -21,7 +22,7 @@ int guest_clone()
 	const int STACK_SIZE = 1 << 14; /* Stack size for cloned child */
 	char *stack; /* Start of stack buffer area */
 	char *stackTop; /* End of stack buffer area */
-	int flags; /* Flags for cloning child */
+	int flags = 0; /* Flags for cloning child */
 	int status;
 	pid_t pid;
 	int args;
@@ -57,6 +58,11 @@ int guest_clone()
 
 	printf("    Child PID=%ld\n", (long)pid);
 
-	return 0;
+	return 10;
 }
 
+
+// int main(){
+  // guest_clone();
+  // return 0;
+// }

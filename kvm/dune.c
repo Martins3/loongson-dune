@@ -293,7 +293,6 @@ void init_ebase(struct kvm_cpu *cpu)
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
-	init_ebase(cpu);
 
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
@@ -389,6 +388,8 @@ static int init_simd()
 
 static int kvm__init_guest(struct kvm_cpu *cpu)
 {
+	init_ebase(cpu);
+
 	if (init_cp0(cpu) < 0)
 		return -errno;
 
@@ -435,8 +436,7 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 			     MAP_SHARED, vcpu->vcpu_fd, 0);
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
-	else
-		pr_info("struct kvm_run address %lx", vcpu->kvm_run);
+
 	return vcpu;
 }
 
@@ -533,8 +533,6 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
 		die_perror("alloc host stack");
-	else
-		pr_info("host stack %llx", host_stack);
 
 	switch_stack(cpu, cpu->vcpu_fd, &(cpu->kvm_run->exit_reason),
 		     (u64)host_stack + PAGESIZE);
@@ -706,15 +704,27 @@ void dup_simd(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
 	// TODO
 }
 
-void copy_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
-{
-	// TODO
+u64 get_parent_one_reg(struct kvm_cpu *parent_cpu, u64 id){
 	struct cp0_reg cp0_reg;
 	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
 	cp0_reg.reg.id = id;
 
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die_perror("KVM_GET_ONE_REG");
+
+  return cp0_reg.v;
+}
+
+void copy_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
+{
+	struct cp0_reg cp0_reg;
+	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
+	cp0_reg.reg.id = id;
+
+	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_ONE_REG, &(cp0_reg.reg)) < 0)
+		die_perror("KVM_GET_ONE_REG");
+
+  printf("guest syscall epc %llx", cp0_reg.v);
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die_perror("KVM_SET_ONE_REG");
@@ -743,10 +753,13 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
   regs.gpr[7] = 0;
   regs.gpr[2] = 0;
 	if (sysno == SYS_CLONE) {
+    // #define sp	$29
 		regs.gpr[29] = parent_cpu->syscall_parameter[2];
   }else{
     die_perror("TODO : support clone3");
   }
+  u64 parent_epc = get_parent_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
+  regs.pc = parent_epc + 4;
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 		die_perror("KVM_SET_REGS");
@@ -758,7 +771,12 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (init_cp0(child_cpu) < 0)
 		return NULL;
 
-	copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_EPC);
+
+  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_EPC);
+  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADVADDR);
+  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTR);
+  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTRP);
+  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_CAUSE);
 	set_cp0(child_cpu, KVM_REG_MIPS_CP0_KSCRATCH2, 0x1234);
 
 	return child_cpu;
@@ -773,8 +791,6 @@ int child_entry(struct kvm_cpu *child_cpu)
 		mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
 	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
 		die_perror("alloc host stack");
-	else
-		pr_info("host stack %llx", host_stack);
 
 	switch_stack(child_cpu, child_cpu->vcpu_fd, &(child_cpu->kvm_run->exit_reason),
 		     (u64)host_stack + PAGESIZE);
@@ -870,7 +886,6 @@ struct kvm_cpu *do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
 void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 {
 	while (true) {
-		printf("vcpu_fd : %lu\n", cpu->cpu_id);
 		long err = ioctl(vcpu_fd, KVM_RUN, 0);
 		long sysno = cpu->syscall_parameter[0];
 
@@ -879,8 +894,10 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 			die_perror("KVM_RUN");
 		}
 
-		if (*exit_reason != KVM_EXIT_HYPERCALL)
+		if (*exit_reason != KVM_EXIT_HYPERCALL){
+      pr_err("vcpu_id : %d", cpu->cpu_id);
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
+    }
 
 		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |
 		    sysno == SYS_EXECLOAD)
