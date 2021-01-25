@@ -734,7 +734,7 @@ void dup_simd(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
 	// TODO
 }
 
-u64 get_parent_one_reg(struct kvm_cpu *parent_cpu, u64 id){
+u64 get_cpu_one_reg(struct kvm_cpu *parent_cpu, u64 id){
 	struct cp0_reg cp0_reg;
 	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
 	cp0_reg.reg.id = id;
@@ -788,7 +788,7 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
   }else{
     die_perror("TODO : support clone3");
   }
-  u64 parent_epc = get_parent_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
+  u64 parent_epc = get_cpu_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
   regs.pc = parent_epc + 4;
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
@@ -967,6 +967,18 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 		} else {
 			do_syscall6(cpu, NULL);
 		}
+
+	struct kvm_regs regs;
+	if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
+		die_perror("KVM_GET_REGS");
+
+  regs.gpr[2] = cpu->syscall_parameter[4];
+  regs.gpr[7] = cpu->syscall_parameter[4];
+  u64 epc = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_EPC);
+  regs.pc = epc + 4;
+
+	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+		die_perror("KVM_SET_REGS");
 	}
 }
 
