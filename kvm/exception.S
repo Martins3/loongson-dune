@@ -35,15 +35,20 @@ ebase_tlb_entry_end:
 .global ebase_general_entry_begin
 .global ebase_general_entry_end
 ebase_general_entry_begin:
-.set push
-.set noat
 mfc0 k1, C0_CAUSE
-move k0, k1
 dsrl k1, k1, 2
 andi k1, k1, 0x1f
 xor k1, k1, EXCCODE_SYS 
 beq k1, zero, syscall
 nop
+
+
+mfc0 k1, C0_CAUSE
+dsrl k1, k1, 2
+andi k1, k1, 0x1f
+li k0, EXCCODE_TLBL
+
+beq k1, k0, ebase_tlb_entry_begin
 INVALID_CODEFLOW_2
 syscall:
 dmfc0 k0, C0_KSCRATCH1
@@ -61,8 +66,6 @@ dmfc0 k0, C0_EPC
 daddiu k0, k0, 4
 dmtc0 k0, C0_EPC
 eret
-
-.set pop
 ebase_general_entry_end:
 
 .global host_loop

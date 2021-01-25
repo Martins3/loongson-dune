@@ -123,10 +123,10 @@
 #define INIT_VALUE_KSCRATCH5 0
 #define INIT_VALUE_KSCRATCH6 0
 
-#define INVALID_CODEFLOW_1 .word (0x42000028 | 1 << 11)
-#define INVALID_CODEFLOW_2 .word (0x42000028 | 2 << 11)
-#define INVALID_CODEFLOW_3 .word (0x42000028 | 3 << 11)
-#define UNIMP_ERROR .word (0x42000028 | 0xf << 11)
+#define INVALID_CODEFLOW_1 .word (0x42000028 | (1 << 11))
+#define INVALID_CODEFLOW_2 .word (0x42000028 | (2 << 11))
+#define INVALID_CODEFLOW_3 .word (0x42000028 | (3 << 11))
+#define UNIMP_ERROR .word (0x42000028 | (0xf << 11))
 #define HYPERCALL_DEBUG .word 0x42000028
 #define HYPERCALL .word 0x42000028
 
@@ -237,7 +237,6 @@
 #define EXCCODE_THREAD		25	/* Thread exceptions (MT) */
 #define EXCCODE_DSPDIS		26	/* DSP disabled exception */
 #define EXCCODE_GE		27	/* Virtualized guest exception (VZ) */
-
 
 
 /**

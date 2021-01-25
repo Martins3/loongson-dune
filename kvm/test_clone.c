@@ -27,7 +27,7 @@ int guest_clone()
 	pid_t pid = -1;
 	int args;
 
-	printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
+  printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
 
 	flags |= CLONE_VM;
 	// flags |= CLONE_FILES;
@@ -46,8 +46,8 @@ int guest_clone()
 
   printf("child new stack %p in guest_clone\n", stackTop);
 
-  // if (clone(childFunc, stackTop, flags | SIGCHLD, &args) == -1)
-    // return 112;
+  if (clone(childFunc, stackTop, flags | SIGCHLD, &args) == -1)
+    return 112;
 
 	/* Parent falls through to here. Wait for child; __WCLONE option is
        required for child notifying with signal other than SIGCHLD. */
@@ -66,7 +66,7 @@ int guest_clone()
 
 	printf("    Child PID=%ld\n", (long)pid);
 
-	return 10;
+	return 0;
 }
 
 

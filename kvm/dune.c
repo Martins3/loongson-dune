@@ -42,6 +42,7 @@ struct kvm_cpu {
 	struct kvm_run *kvm_run;
 	void *ebase;
 	long syscall_parameter[7];
+  int fd;
 };
 
 struct kvm_cpu *setup_vm_with_one_cpu();
@@ -214,6 +215,17 @@ struct cp0_reg {
 #define PROT_RWX (PROT_READ | PROT_WRITE | PROT_EXEC)
 #define MAP_ANON_NORESERVE (MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE)
 
+extern void ebase_tlb_entry_begin(void);
+extern void ebase_tlb_entry_end(void);
+
+extern void ebase_error_entry_begin(void);
+extern void ebase_error_entry_end(void);
+
+#define EBASE_TLB_OFFSET 0x0
+#define EBASE_XTLB_OFFSET 0x80
+#define EBASE_CACHE_OFFSET 0x100
+#define EBASE_GE_OFFSET 0x180
+
 static void alloc_ebase(struct kvm_cpu *cpu)
 {
 	int i;
@@ -221,15 +233,16 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
 	cpu->ebase = addr;
+  for (int i = 0; i < PAGESIZE / 4; ++i) {
+    int * x = (int *)addr;
+    x = x + i;
+    *x = (0x42000028 + (0x14 << 11));
+  }
+
+  assert((void *)ebase_tlb_entry_end - (void *)ebase_error_entry_begin < (EBASE_CACHE_OFFSET - EBASE_XTLB_OFFSET));
 	pr_info("ebase address : %llx", (u64)addr);
 }
-#define EBASE_TLB_OFFSET 0x0
-#define EBASE_XTLB_OFFSET 0x80
-#define EBASE_CACHE_OFFSET 0x100
-#define EBASE_GE_OFFSET 0x180
 
-extern void ebase_error_entry_begin(void);
-extern void ebase_error_entry_end(void);
 static int init_ebase_tlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_TLB_OFFSET, ebase_error_entry_begin,
@@ -239,8 +252,6 @@ static int init_ebase_tlb(struct kvm_cpu *cpu)
 // TODO 随意的使用 k0, k1 的保证是什么 ?
 static int init_ebase_xtlb(struct kvm_cpu *cpu)
 {
-	extern void ebase_tlb_entry_begin(void);
-	extern void ebase_tlb_entry_end(void);
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
 	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
 	return 0;
@@ -410,6 +421,7 @@ static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 
 	vcpu->kvm = kvm;
 
+
 	return vcpu;
 }
 
@@ -436,6 +448,16 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 			     MAP_SHARED, vcpu->vcpu_fd, 0);
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
+
+  // TODO remove the debug related code when finished
+  char name [40];
+  memset(name, 0, sizeof(name));
+  snprintf(name, 40,  "%ld-syscall.txt", cpu_id);
+  vcpu->fd = open(name, O_TRUNC | O_WRONLY | O_CREAT, 0644);
+  if (vcpu->fd == -1) {
+      perror("open failed");
+      exit(1);
+  }
 
 	return vcpu;
 }
@@ -906,6 +928,8 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
       pr_err("vcpu_id : %d", cpu->cpu_id);
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
     }
+
+    dprintf(cpu->fd, "%ld\n", sysno);
 
 		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |
 		    sysno == SYS_EXECLOAD)
