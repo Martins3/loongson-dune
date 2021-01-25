@@ -38,8 +38,9 @@ ebase_general_entry_begin:
 .set push
 .set noat
 mfc0 k1, C0_CAUSE
-andi k1, k1, 0x7c
+move k0, k1
 dsrl k1, k1, 2
+andi k1, k1, 0x1f
 xor k1, k1, EXCCODE_SYS 
 beq k1, zero, syscall
 nop

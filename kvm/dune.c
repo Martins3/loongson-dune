@@ -608,6 +608,12 @@ err:
 }
 
 int guest_clone();
+int guest_syscall(){
+  for (int i = 0; i < 10000; ++i) {
+    printf("a\n");
+  }
+  return 1;
+}
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
 // 而且需要提供两个入口，用于 fork
@@ -625,11 +631,13 @@ int kvm__init()
 		return -errno;
 	kvm_cpu__start(cpu, &regs);
 	// exit(guest_execution());
-	exit(guest_clone());
+  exit(guest_clone());
+  // exit(guest_syscall());
 }
 
 
-int guest_execution()
+
+int guest_fork()
 {
 	printf("fork you\n");
 	long len = printf("liyawei\n");
@@ -906,6 +914,7 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
 			// TODO wow, so distingusting code
+      // TODO fork will be rewriten
 			struct kvm_cpu *fork_cpu = emulate_fork(cpu, sysno);
 			if (fork_cpu != NULL) {
 				cpu = fork_cpu;
