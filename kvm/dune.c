@@ -826,7 +826,13 @@ int child_entry(struct kvm_cpu *child_cpu)
 		     (u64)host_stack + PAGESIZE);
 }
 
-extern void dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
+// TODO wrong approach, remove it later
+struct parent_clone_ret{
+  u64 r2;
+  u64 r7;
+};
+
+extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9, struct parent_clone_ret * ret);
 
 void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu)
 {
@@ -836,7 +842,16 @@ void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu)
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
-	dune_clone(r4, r5, r6, r7, r8, r9);
+  struct parent_clone_ret ret;
+	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9, &ret);
+
+  if (child_pid > 0){
+    parent_cpu->syscall_parameter[0] = child_pid;
+    parent_cpu->syscall_parameter[4] = 0;
+  }else{
+    parent_cpu->syscall_parameter[0] = -child_pid;
+    parent_cpu->syscall_parameter[4] = 1;
+  }
 }
 
 struct child_args{
@@ -853,6 +868,7 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		die_perror("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
+    // TODO move code block to dune_clone as close as possible
 		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
     child_stack_pointer &= -16; // # aligning stack to double word
     child_stack_pointer -= 16;
@@ -864,7 +880,9 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		if (child_stack_pointer) {
 			emulate_fork_with_new_stack(parent_cpu);
 			return NULL;
-		}
+		}else{
+      die_perror("TODO : maybe do some check on the child_stack_pointer, segment fault is stupid");
+    }
 	}
 
   // TODO I can't test clone3 with 4.19 kernel
@@ -903,8 +921,8 @@ struct kvm_cpu *do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
 			     : SYSCALL_CLOBBERLIST);
 
 	if (child_cpu != NULL && r2 == 0 && r7 == 0) {
-		child_cpu->syscall_parameter[0] = r2;
-		child_cpu->syscall_parameter[4] = r7;
+		child_cpu->syscall_parameter[0] = 0;
+		child_cpu->syscall_parameter[4] = 0;
 		return child_cpu;
 	}
 

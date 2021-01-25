@@ -85,11 +85,12 @@ dune_clone:
 	syscall
 	beq	$7, $0, 1f
 	nop
+	// parent failed
 	jr	ra
 	dsubu	$2, $0, $2
-// parent return
 1:	beq	$2, $0, 1f
 	nop
+	// parent success
 	jr	ra
 	nop
 // child gotos a new function
