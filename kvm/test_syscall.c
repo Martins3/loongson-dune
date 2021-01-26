@@ -10,14 +10,6 @@
 #include <errno.h>
 #include "syscall_arch.h"
 
-long __syscall_ret(unsigned long r)
-{
-	if (r > -4096UL) {
-		errno = -r;
-		return -1;
-	}
-	return r;
-}
 
 int main(int argc, char *argv[]){
 	char a [] ="fork you\n";

@@ -1,3 +1,6 @@
+#ifndef SYSCALL_ARCH_H
+#define SYSCALL_ARCH_H
+
 #define __SYSCALL_LL_E(x) (x)
 #define __SYSCALL_LL_O(x) (x)
 
@@ -120,9 +123,18 @@ static inline long __syscall6(long n, long a, long b, long c, long d, long e, lo
 	return r7 && r2>0 ? -r2 : r2;
 }
 
+static inline long __syscall_ret(unsigned long r)
+{
+	if (r > -4096UL) {
+		return -1;
+	}
+	return r;
+}
+
 #define VDSO_USEFUL
 #define VDSO_CGT_SYM "__vdso_clock_gettime"
 #define VDSO_CGT_VER "LINUX_2.6"
 
 #define SO_SNDTIMEO_OLD 0x1005
 #define SO_RCVTIMEO_OLD 0x1006
+#endif

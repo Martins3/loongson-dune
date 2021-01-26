@@ -86,7 +86,7 @@ static void die_builtin(const char *err, va_list params)
 
 static void info_builtin(const char *info, va_list params)
 {
-	report(" Info: ", info, params);
+	// report(" Info: ", info, params);
 }
 
 void pr_err(const char *err, ...)
@@ -541,7 +541,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		 : "memory"
 		 : guest_entry);
 
-	dump_kvm_regs(STDOUT_FILENO, *regs);
+	// dump_kvm_regs(STDOUT_FILENO, *regs);
 
 	if (kvm__init_guest(cpu) < 0) {
 		die_perror("guest init\n");
@@ -796,8 +796,8 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
 		die_perror("KVM_GET_REGS");
 
-	regs.gpr[7] = 0;
 	regs.gpr[2] = 0;
+	regs.gpr[7] = 0;
 	if (sysno == SYS_CLONE) {
 		// #define sp	$29
 		regs.gpr[29] = parent_cpu->syscall_parameter[2];
@@ -953,9 +953,6 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 {
 	int x = 0;
 	while (true) {
-		if (x++ > 3) {
-			exit(13);
-		}
 		long err = ioctl(vcpu_fd, KVM_RUN, 0);
 		long sysno = cpu->syscall_parameter[0];
 
@@ -992,33 +989,34 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 		if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
 			die_perror("KVM_GET_REGS");
 
-		dump_kvm_regs(cpu->debug_fd, regs);
+    // dump_kvm_regs(cpu->debug_fd, regs);
 		regs.gpr[2] = cpu->syscall_parameter[0];
 		regs.gpr[7] = cpu->syscall_parameter[4];
+    cpu->kvm_run->hypercall.ret = cpu->syscall_parameter[0];
 
-		dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
-			regs.gpr[2], regs.gpr[7]);
+    // dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
+      // regs.gpr[2], regs.gpr[7]);
 
 		u64 epc = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_EPC);
 		// dprintf(cpu->fd, "return address %llx\n", epc);
 		// dprintf(cpu->fd, "pc %llx\n", regs.pc);
-		regs.pc = epc + 4;
-		dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
+    regs.pc = epc + 4;
+		// dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
 
-		u64 status = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
-		// dprintf(cpu->fd, "status %llx\n", status);
-		status = set_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
-					 status & (~STATUS_BIT_EXL));
+    u64 status = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
+    // dprintf(cpu->debug_fd, "status %llx\n", status);
+    status = set_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
+           status & (~STATUS_BIT_EXL));
 		// dprintf(cpu->fd, "new status %llx\n", status);
 
-		if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
-			die_perror("KVM_SET_REGS");
+    if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+      die_perror("KVM_SET_REGS");
 	}
 }
 
 int main(int argc, char *argv[])
 {
-	printf("init status %x\n", INIT_VALUE_STATUS);
+  // printf("%x\n", INIT_VALUE_STATUS);
 #ifndef LOONGSON
 	die_perror("run it in loongson\n");
 #endif

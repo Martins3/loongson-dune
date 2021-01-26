@@ -21,6 +21,9 @@ int main(int argc, char *argv[]){
 
   dprintf(fd, "\n");
   dprintf(fd, "adf");
+  printf("%x\n", 0x42000028 + (0x37 << 11));
+  printf("%x\n", 0x42000028 + (0x38 << 11));
+  printf("%x\n", 0x42000028 + (0x39 << 11));
   
   return 0;
 }
