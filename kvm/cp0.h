@@ -86,6 +86,7 @@
 #define INIT_VALUE_COMPARE 0xffffffff
 
 #define STATUS_BIT_INT (1 << 0)
+#define STATUS_BIT_EXL (1 << 1)
 #define STATUS_BIT_UX (1 << 5)
 #define STATUS_BIT_SX (1 << 6)
 #define STATUS_BIT_KX (1 << 7)

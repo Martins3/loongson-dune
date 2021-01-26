@@ -42,7 +42,7 @@ struct kvm_cpu {
 	struct kvm_run *kvm_run;
 	void *ebase;
 	long syscall_parameter[7];
-  int fd;
+	int debug_fd;
 };
 
 struct kvm_cpu *setup_vm_with_one_cpu();
@@ -163,7 +163,7 @@ void dump_kvm_regs(int debug_fd, struct kvm_regs regs)
 
 	dprintf(debug_fd, "hi   : %016llx\n", (unsigned long long)regs.hi);
 	dprintf(debug_fd, "lo   : %016llx\n", (unsigned long long)regs.lo);
-	dprintf(debug_fd, "epc  : %016llx\n", (unsigned long long)regs.pc);
+	dprintf(debug_fd, "pc  : %016llx\n", (unsigned long long)regs.pc);
 
 	dprintf(debug_fd, "\n");
 }
@@ -233,13 +233,14 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	if (addr == NULL && ((u64)addr & 0xffff) != 0)
 		die_perror("alloc_ebase");
 	cpu->ebase = addr;
-  for (int i = 0; i < PAGESIZE / 4; ++i) {
-    int * x = (int *)addr;
-    x = x + i;
-    *x = (0x42000028 + (0x14 << 11));
-  }
+	for (int i = 0; i < PAGESIZE / 4; ++i) {
+		int *x = (int *)addr;
+		x = x + i;
+		*x = (0x42000028 + (0x14 << 11));
+	}
 
-  assert((void *)ebase_tlb_entry_end - (void *)ebase_error_entry_begin < (EBASE_CACHE_OFFSET - EBASE_XTLB_OFFSET));
+	assert((void *)ebase_tlb_entry_end - (void *)ebase_error_entry_begin <
+	       (EBASE_CACHE_OFFSET - EBASE_XTLB_OFFSET));
 	pr_info("ebase address : %llx", (u64)addr);
 }
 
@@ -304,7 +305,6 @@ void init_ebase(struct kvm_cpu *cpu)
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
-
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
 	u64 INIT_VALUE_KSCRATCH1 = (u64) & (cpu->syscall_parameter);
@@ -372,10 +372,10 @@ static int init_cp0(struct kvm_cpu *cpu)
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(one_regs[i].reg)) <
 		    0) {
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-      die_perror("KVM_SET_ONE_REG");
+			die_perror("KVM_SET_ONE_REG");
 		} else {
 			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
-				// one_regs[i].v);
+			// one_regs[i].v);
 		}
 	}
 	return 0;
@@ -421,7 +421,6 @@ static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 
 	vcpu->kvm = kvm;
 
-
 	return vcpu;
 }
 
@@ -449,15 +448,15 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
 
-  // TODO remove the debug related code when finished
-  char name [40];
-  memset(name, 0, sizeof(name));
-  snprintf(name, 40,  "%ld-syscall.txt", cpu_id);
-  vcpu->fd = open(name, O_TRUNC | O_WRONLY | O_CREAT, 0644);
-  if (vcpu->fd == -1) {
-      perror("open failed");
-      exit(1);
-  }
+	// TODO remove the debug related code when finished
+	char name[40];
+	memset(name, 0, sizeof(name));
+	snprintf(name, 40, "%ld-syscall.txt", cpu_id);
+	vcpu->debug_fd = open(name, O_TRUNC | O_WRONLY | O_CREAT, 0644);
+	if (vcpu->debug_fd == -1) {
+		perror("open failed");
+		exit(1);
+	}
 
 	return vcpu;
 }
@@ -568,9 +567,9 @@ struct kvm_cpu *setup_vm_with_one_cpu()
 {
 	char dev_path[] = "/dev/kvm";
 	int ret;
-	struct kvm * dune;
+	struct kvm *dune;
 
-  dune = calloc(1, sizeof(dune));
+	dune = calloc(1, sizeof(dune));
 
 	dune->sys_fd = -1;
 	dune->vm_fd = -1;
@@ -630,11 +629,12 @@ err:
 }
 
 int guest_clone();
-int guest_syscall(){
-  for (int i = 0; i < 10000; ++i) {
-    printf("a\n");
-  }
-  return 1;
+int guest_syscall()
+{
+	for (int i = 0; i < 10000; ++i) {
+		printf("a\n");
+	}
+	return 1;
 }
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
@@ -653,11 +653,9 @@ int kvm__init()
 		return -errno;
 	kvm_cpu__start(cpu, &regs);
 	// exit(guest_execution());
-  exit(guest_clone());
-  // exit(guest_syscall());
+	exit(guest_clone());
+	// exit(guest_syscall());
 }
-
-
 
 int guest_fork()
 {
@@ -734,15 +732,33 @@ void dup_simd(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
 	// TODO
 }
 
-u64 get_cpu_one_reg(struct kvm_cpu *parent_cpu, u64 id){
+enum ACCESS_CPU_OP {
+	GET = KVM_GET_ONE_REG,
+	SET = KVM_SET_ONE_REG,
+};
+
+u64 access_cpu_one_reg(struct kvm_cpu *cpu, u64 id, enum ACCESS_CPU_OP op,
+		       u64 value)
+{
 	struct cp0_reg cp0_reg;
 	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
 	cp0_reg.reg.id = id;
+	cp0_reg.v = (op == GET) ? 0 : value;
 
-	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_ONE_REG, &(cp0_reg.reg)) < 0)
+	if (ioctl(cpu->vcpu_fd, op, &(cp0_reg.reg)) < 0)
 		die_perror("KVM_GET_ONE_REG");
 
-  return cp0_reg.v;
+	return cp0_reg.v;
+}
+
+u64 get_cpu_one_reg(struct kvm_cpu *cpu, u64 id)
+{
+	return access_cpu_one_reg(cpu, id, GET, 0);
+}
+
+u64 set_cpu_one_reg(struct kvm_cpu *cpu, u64 id, u64 v)
+{
+	return access_cpu_one_reg(cpu, id, SET, v);
 }
 
 void copy_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
@@ -754,7 +770,7 @@ void copy_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die_perror("KVM_GET_ONE_REG");
 
-  printf("guest syscall epc %llx", cp0_reg.v);
+	printf("guest syscall epc %llx", cp0_reg.v);
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die_perror("KVM_SET_ONE_REG");
@@ -775,21 +791,21 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_regs regs;
 	// struct kvm_cpu *child_cpu = setup_vm_with_one_cpu();
-  struct kvm_cpu *child_cpu = init_vcpu_from_parent(parent_cpu);
+	struct kvm_cpu *child_cpu = init_vcpu_from_parent(parent_cpu);
 
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
 		die_perror("KVM_GET_REGS");
 
-  regs.gpr[7] = 0;
-  regs.gpr[2] = 0;
+	regs.gpr[7] = 0;
+	regs.gpr[2] = 0;
 	if (sysno == SYS_CLONE) {
-    // #define sp	$29
+		// #define sp	$29
 		regs.gpr[29] = parent_cpu->syscall_parameter[2];
-  }else{
-    die_perror("TODO : support clone3");
-  }
-  u64 parent_epc = get_cpu_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
-  regs.pc = parent_epc + 4;
+	} else {
+		die_perror("TODO : support clone3");
+	}
+	u64 parent_epc = get_cpu_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
+	regs.pc = parent_epc + 4;
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 		die_perror("KVM_SET_REGS");
@@ -801,12 +817,11 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (init_cp0(child_cpu) < 0)
 		return NULL;
 
-
-  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_EPC);
-  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADVADDR);
-  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTR);
-  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTRP);
-  // copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_CAUSE);
+	// copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_EPC);
+	// copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADVADDR);
+	// copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTR);
+	// copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_BADINSTRP);
+	// copy_cp0(parent_cpu, child_cpu, KVM_REG_MIPS_CP0_CAUSE);
 	set_cp0(child_cpu, KVM_REG_MIPS_CP0_KSCRATCH2, 0x1234);
 
 	return child_cpu;
@@ -822,17 +837,19 @@ int child_entry(struct kvm_cpu *child_cpu)
 	if (host_stack == NULL && ((u64)host_stack & 0xffff) != 0)
 		die_perror("alloc host stack");
 
-	switch_stack(child_cpu, child_cpu->vcpu_fd, &(child_cpu->kvm_run->exit_reason),
+	switch_stack(child_cpu, child_cpu->vcpu_fd,
+		     &(child_cpu->kvm_run->exit_reason),
 		     (u64)host_stack + PAGESIZE);
 }
 
 // TODO wrong approach, remove it later
-struct parent_clone_ret{
-  u64 r2;
-  u64 r7;
+struct parent_clone_ret {
+	u64 r2;
+	u64 r7;
 };
 
-extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9, struct parent_clone_ret * ret);
+extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9,
+		      struct parent_clone_ret *ret);
 
 void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu)
 {
@@ -842,21 +859,21 @@ void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu)
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
-  struct parent_clone_ret ret;
+	struct parent_clone_ret ret;
 	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9, &ret);
 
-  if (child_pid > 0){
-    parent_cpu->syscall_parameter[0] = child_pid;
-    parent_cpu->syscall_parameter[4] = 0;
-  }else{
-    parent_cpu->syscall_parameter[0] = -child_pid;
-    parent_cpu->syscall_parameter[4] = 1;
-  }
+	if (child_pid > 0) {
+		parent_cpu->syscall_parameter[0] = child_pid;
+		parent_cpu->syscall_parameter[4] = 0;
+	} else {
+		parent_cpu->syscall_parameter[0] = -child_pid;
+		parent_cpu->syscall_parameter[4] = 1;
+	}
 }
 
-struct child_args{
-  CHILD_ENTRY_PTR entry;
-  struct kvm_cpu * cpu;
+struct child_args {
+	CHILD_ENTRY_PTR entry;
+	struct kvm_cpu *cpu;
 };
 
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
@@ -868,31 +885,32 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		die_perror("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
-    // TODO move code block to dune_clone as close as possible
+		// TODO move code block to dune_clone as close as possible
 		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
-    child_stack_pointer &= -16; // # aligning stack to double word
-    child_stack_pointer -= 16;
-    struct child_args * child_args_on_stack_top = (struct child_args *)(child_stack_pointer);
-    child_args_on_stack_top->entry = child_entry;
-    child_args_on_stack_top->cpu = child_cpu;
-    parent_cpu->syscall_parameter[2] = child_stack_pointer;
+		child_stack_pointer &= -16; // # aligning stack to double word
+		child_stack_pointer -= 16;
+		struct child_args *child_args_on_stack_top =
+			(struct child_args *)(child_stack_pointer);
+		child_args_on_stack_top->entry = child_entry;
+		child_args_on_stack_top->cpu = child_cpu;
+		parent_cpu->syscall_parameter[2] = child_stack_pointer;
 
 		if (child_stack_pointer) {
 			emulate_fork_with_new_stack(parent_cpu);
 			return NULL;
-		}else{
-      die_perror("TODO : maybe do some check on the child_stack_pointer, segment fault is stupid");
-    }
+		} else {
+			die_perror(
+				"TODO : maybe do some check on the child_stack_pointer, segment fault is stupid");
+		}
 	}
 
-  // TODO I can't test clone3 with 4.19 kernel
-  // TODO It doesn't work
+	// TODO I can't test clone3 with 4.19 kernel
+	// TODO It doesn't work
 	if (sysno == SYS_CLONE3) {
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
-			emulate_fork_with_new_stack(
-				parent_cpu);
+			emulate_fork_with_new_stack(parent_cpu);
 			return NULL;
 		}
 	}
@@ -933,7 +951,11 @@ struct kvm_cpu *do_syscall6(struct kvm_cpu *cpu, struct kvm_cpu *child_cpu)
 
 void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 {
+	int x = 0;
 	while (true) {
+		if (x++ > 3) {
+			exit(13);
+		}
 		long err = ioctl(vcpu_fd, KVM_RUN, 0);
 		long sysno = cpu->syscall_parameter[0];
 
@@ -942,12 +964,10 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 			die_perror("KVM_RUN");
 		}
 
-		if (*exit_reason != KVM_EXIT_HYPERCALL){
-      pr_err("vcpu_id : %d", cpu->cpu_id);
+		if (*exit_reason != KVM_EXIT_HYPERCALL) {
+			pr_err("vcpu_id : %d", cpu->cpu_id);
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
-    }
-
-    dprintf(cpu->fd, "%ld\n", sysno);
+		}
 
 		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |
 		    sysno == SYS_EXECLOAD)
@@ -956,7 +976,7 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
 			// TODO wow, so distingusting code
-      // TODO fork will be rewriten
+			// TODO fork will be rewriten
 			struct kvm_cpu *fork_cpu = emulate_fork(cpu, sysno);
 			if (fork_cpu != NULL) {
 				cpu = fork_cpu;
@@ -968,22 +988,37 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 			do_syscall6(cpu, NULL);
 		}
 
-	struct kvm_regs regs;
-	if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
-		die_perror("KVM_GET_REGS");
+		struct kvm_regs regs;
+		if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
+			die_perror("KVM_GET_REGS");
 
-  regs.gpr[2] = cpu->syscall_parameter[4];
-  regs.gpr[7] = cpu->syscall_parameter[4];
-  u64 epc = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_EPC);
-  regs.pc = epc + 4;
+		dump_kvm_regs(cpu->debug_fd, regs);
+		regs.gpr[2] = cpu->syscall_parameter[0];
+		regs.gpr[7] = cpu->syscall_parameter[4];
 
-	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
-		die_perror("KVM_SET_REGS");
+		dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
+			regs.gpr[2], regs.gpr[7]);
+
+		u64 epc = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_EPC);
+		// dprintf(cpu->fd, "return address %llx\n", epc);
+		// dprintf(cpu->fd, "pc %llx\n", regs.pc);
+		regs.pc = epc + 4;
+		dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
+
+		u64 status = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
+		// dprintf(cpu->fd, "status %llx\n", status);
+		status = set_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
+					 status & (~STATUS_BIT_EXL));
+		// dprintf(cpu->fd, "new status %llx\n", status);
+
+		if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+			die_perror("KVM_SET_REGS");
 	}
 }
 
 int main(int argc, char *argv[])
 {
+	printf("init status %x\n", INIT_VALUE_STATUS);
 #ifndef LOONGSON
 	die_perror("run it in loongson\n");
 #endif

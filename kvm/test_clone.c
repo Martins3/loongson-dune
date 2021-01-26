@@ -27,6 +27,16 @@ int guest_clone()
 	pid_t pid = -1;
 	int args;
 
+  stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
+         MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+  if (stack == MAP_FAILED)
+    return 111;
+
+  printf("1234\n");
+  printf("123\n");
+  printf("12\n");
+  printf("1\n");
+
   printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
 
 	flags |= CLONE_VM;
