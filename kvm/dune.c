@@ -643,7 +643,6 @@ int guest_syscall()
 int dune_enter()
 {
 	struct kvm_regs regs;
-	memset(&regs, 0, sizeof(struct kvm_regs));
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	struct kvm_cpu *cpu = setup_vm_with_one_cpu(0);
 	if (cpu == NULL)
@@ -673,7 +672,7 @@ int guest_fork()
 		printf("this is parent\n");
 		break;
 	}
-	return 12;
+	return 0;
 }
 
 /** 
@@ -1042,9 +1041,6 @@ void host_loop(struct kvm_cpu *cpu)
 
 int main(int argc, char *argv[])
 {
-#ifndef LOONGSON
-	die_perror("run it in loongson\n");
-#endif
 	if (dune_enter()) {
 		pr_err("KVM failed");
 	}
