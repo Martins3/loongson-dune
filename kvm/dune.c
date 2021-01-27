@@ -8,11 +8,18 @@
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
+#include <sys/types.h>
 #include "cp0.h"
 #include "syscall_arch.h"
 
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+
+#define _GNU_SOURCE
+#ifndef __USE_GNU
+#define __USE_GNU
+#endif
+#include <sched.h>
 
 #ifndef LOONGSON
 #include "kvm.h"
@@ -86,7 +93,7 @@ static void die_builtin(const char *err, va_list params)
 
 static void info_builtin(const char *info, va_list params)
 {
-	// report(" Info: ", info, params);
+  report(" Info: ", info, params);
 }
 
 void pr_err(const char *err, ...)
@@ -629,6 +636,7 @@ err:
 }
 
 int guest_clone();
+int guest_fork();
 int guest_syscall()
 {
 	for (int i = 0; i < 10000; ++i) {
@@ -653,7 +661,8 @@ int kvm__init()
 		return -errno;
 	kvm_cpu__start(cpu, &regs);
 	// exit(guest_execution());
-	exit(guest_clone());
+	// exit(guest_clone());
+  exit(guest_fork());
 	// exit(guest_syscall());
 }
 
@@ -670,14 +679,13 @@ int guest_fork()
 		pr_err("fork failed");
 		break;
 	case 0:
-		pr_info("child");
+		pr_info("child\n");
 		break;
 	default:
-		pr_info("parent");
-		sleep(100);
+		pr_info("parent\n");
 		break;
 	}
-	return 0;
+	return 12;
 }
 
 /** 
@@ -851,7 +859,7 @@ struct parent_clone_ret {
 extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9,
 		      struct parent_clone_ret *ret);
 
-void emulate_fork_with_new_stack(struct kvm_cpu *parent_cpu)
+void emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu)
 {
 	u64 r4 = parent_cpu->syscall_parameter[1];
 	u64 r5 = parent_cpu->syscall_parameter[2];
@@ -876,10 +884,49 @@ struct child_args {
 	struct kvm_cpu *cpu;
 };
 
+bool is_clone_vm(struct kvm_cpu *parent_cpu, int sysno)
+{
+	if (sysno == SYS_FORK)
+		return true;
+
+	if (sysno == SYS_CLONE)
+		return parent_cpu->syscall_parameter[1] | CLONE_VM;
+
+	if (sysno == SYS_CLONE3) {
+		struct clone3_args *args =
+			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
+		return args->flags | CLONE_VM;
+	}
+
+	die_perror("unexpected sysno");
+}
+
+void emulate_fork_with_two_vm(struct kvm_cpu *parent_cpu)
+{
+	struct kvm_cpu *child_cpu;
+
+	child_cpu = calloc(1, sizeof(*child_cpu));
+	if (!child_cpu)
+		die_perror("create child vm\n");
+
+	if (do_syscall6(parent_cpu, child_cpu) != NULL){
+    printf("THIS IS CHILD, EXIT IN HOST");
+    exit(0);
+  }
+}
+
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
 // TODO maybe stack is invalid, just segment fault is too stupid
-struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
+void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
+	if (is_clone_vm(parent_cpu, sysno)) {
+		emulate_fork_with_two_vm(parent_cpu);
+    return;
+	}
+
+  // without CLONE_VM
+  // 1. creating one vcpu is enough
+  // 2. child host need one stack for `host_loop`
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu, sysno);
 	if (child_cpu == NULL)
 		die_perror("DUP_VCPU");
@@ -896,8 +943,7 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		parent_cpu->syscall_parameter[2] = child_stack_pointer;
 
 		if (child_stack_pointer) {
-			emulate_fork_with_new_stack(parent_cpu);
-			return NULL;
+			emulate_fork_by_two_vcpu(parent_cpu);
 		} else {
 			die_perror(
 				"TODO : maybe do some check on the child_stack_pointer, segment fault is stupid");
@@ -905,17 +951,14 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 	}
 
 	// TODO I can't test clone3 with 4.19 kernel
-	// TODO It doesn't work
+	// TODO It doesn't work, reference how SYS_CLONE works
 	if (sysno == SYS_CLONE3) {
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
-			emulate_fork_with_new_stack(parent_cpu);
-			return NULL;
+			emulate_fork_by_two_vcpu(parent_cpu);
 		}
 	}
-
-	return do_syscall6(parent_cpu, child_cpu);
 }
 
 // if (sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3)
@@ -972,15 +1015,7 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
-			// TODO wow, so distingusting code
-			// TODO fork will be rewriten
-			struct kvm_cpu *fork_cpu = emulate_fork(cpu, sysno);
-			if (fork_cpu != NULL) {
-				cpu = fork_cpu;
-				vcpu_fd = cpu->vcpu_fd;
-				exit_reason =
-					(u32 *)&(cpu->kvm_run->exit_reason);
-			}
+			emulate_fork(cpu, sysno);
 		} else {
 			do_syscall6(cpu, NULL);
 		}
@@ -1016,7 +1051,6 @@ void host_loop(struct kvm_cpu *cpu, int vcpu_fd, u32 *exit_reason)
 
 int main(int argc, char *argv[])
 {
-	// printf("%x\n", INIT_VALUE_STATUS);
 #ifndef LOONGSON
 	die_perror("run it in loongson\n");
 #endif
