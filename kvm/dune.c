@@ -36,9 +36,13 @@ typedef unsigned long long u64;
 // /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
 
+// TODO protect this global variable
+int vm_serial_number = 0;
+
 struct kvm {
 	int sys_fd;
 	int vm_fd;
+  int vm_id;
 };
 
 // reference : /home/maritns3/core/tool/mips/include/kvm/kvm-cpu-arch.h
@@ -93,7 +97,7 @@ static void die_builtin(const char *err, va_list params)
 
 static void info_builtin(const char *info, va_list params)
 {
-  report(" Info: ", info, params);
+	report(" Info: ", info, params);
 }
 
 void pr_err(const char *err, ...)
@@ -175,7 +179,6 @@ void dump_kvm_regs(int debug_fd, struct kvm_regs regs)
 	dprintf(debug_fd, "\n");
 }
 
-// TODO : use this to debug : KVM_GET_REG_LIST
 void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
 {
 	struct kvm_regs regs;
@@ -183,33 +186,6 @@ void kvm_cpu__show_registers(int vcpu_fd, int debug_fd)
 	if (ioctl(vcpu_fd, KVM_GET_REGS, &regs) < 0)
 		die("KVM_GET_REGS failed");
 	dump_kvm_regs(debug_fd, regs);
-}
-
-static int kvm__run_guest()
-{
-	// 1. 使用内联汇编将 gpr 装入到数组中间
-	//   1. kvm mips.c 的 guest.c 处理
-	// 2. 调用 kvm__run_guest
-	//
-	// 3. 使用内联汇编将 从数组中间恢复，但是此时，已经是在 guest 态了
-	return -errno;
-}
-
-// TODO 调查 hello kvm 的将字节导入到内核的方法 ?
-// TLB rixi, TLB invalid 似乎也是不用考虑的
-static int setup_syscall_routine()
-{
-	return -errno;
-}
-
-static int setup_tlb_routine()
-{
-	return -errno;
-}
-
-static int setup_cache_routine()
-{
-	return -errno;
 }
 
 struct cp0_reg {
@@ -257,7 +233,6 @@ static int init_ebase_tlb(struct kvm_cpu *cpu)
 	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
-// TODO 随意的使用 k0, k1 的保证是什么 ?
 static int init_ebase_xtlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
@@ -431,7 +406,7 @@ static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 	return vcpu;
 }
 
-struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
+struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, int cpu_id)
 {
 	struct kvm_cpu *vcpu;
 	int mmap_size;
@@ -458,7 +433,7 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, unsigned long cpu_id)
 	// TODO remove the debug related code when finished
 	char name[40];
 	memset(name, 0, sizeof(name));
-	snprintf(name, 40, "%ld-syscall.txt", cpu_id);
+	snprintf(name, 40, "%d-%d-syscall.txt", kvm->vm_id, cpu_id);
 	vcpu->debug_fd = open(name, O_TRUNC | O_WRONLY | O_CREAT, 0644);
 	if (vcpu->debug_fd == -1) {
 		perror("open failed");
@@ -568,8 +543,6 @@ guest_entry:
 	return 0;
 }
 
-int guest_execution();
-
 struct kvm_cpu *setup_vm_with_one_cpu()
 {
 	char dev_path[] = "/dev/kvm";
@@ -580,6 +553,9 @@ struct kvm_cpu *setup_vm_with_one_cpu()
 
 	dune->sys_fd = -1;
 	dune->vm_fd = -1;
+  // TODO if we want to keep a accurate vm_id
+  // maybe shmem and mutex is necessary
+  dune->vm_id = 100;
 
 	ret = open(dev_path, O_RDWR);
 	if (ret < 0) {
@@ -637,6 +613,7 @@ err:
 
 int guest_clone();
 int guest_fork();
+int guest_execution();
 int guest_syscall()
 {
 	for (int i = 0; i < 10000; ++i) {
@@ -662,7 +639,7 @@ int kvm__init()
 	kvm_cpu__start(cpu, &regs);
 	// exit(guest_execution());
 	// exit(guest_clone());
-  exit(guest_fork());
+	exit(guest_fork());
 	// exit(guest_syscall());
 }
 
@@ -850,16 +827,9 @@ int child_entry(struct kvm_cpu *child_cpu)
 		     (u64)host_stack + PAGESIZE);
 }
 
-// TODO wrong approach, remove it later
-struct parent_clone_ret {
-	u64 r2;
-	u64 r7;
-};
+extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
 
-extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9,
-		      struct parent_clone_ret *ret);
-
-void emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu)
+void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu)
 {
 	u64 r4 = parent_cpu->syscall_parameter[1];
 	u64 r5 = parent_cpu->syscall_parameter[2];
@@ -867,8 +837,7 @@ void emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu)
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
-	struct parent_clone_ret ret;
-	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9, &ret);
+	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;
@@ -901,7 +870,7 @@ bool is_clone_vm(struct kvm_cpu *parent_cpu, int sysno)
 	die_perror("unexpected sysno");
 }
 
-void emulate_fork_with_two_vm(struct kvm_cpu *parent_cpu)
+void emulate_fork_with_another_vm(struct kvm_cpu *parent_cpu)
 {
 	struct kvm_cpu *child_cpu;
 
@@ -909,10 +878,8 @@ void emulate_fork_with_two_vm(struct kvm_cpu *parent_cpu)
 	if (!child_cpu)
 		die_perror("create child vm\n");
 
-	if (do_syscall6(parent_cpu, child_cpu) != NULL){
-    printf("THIS IS CHILD, EXIT IN HOST");
-    exit(0);
-  }
+	if (do_syscall6(parent_cpu, child_cpu) != NULL) {
+	}
 }
 
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
@@ -920,13 +887,13 @@ void emulate_fork_with_two_vm(struct kvm_cpu *parent_cpu)
 void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
 	if (is_clone_vm(parent_cpu, sysno)) {
-		emulate_fork_with_two_vm(parent_cpu);
-    return;
+		emulate_fork_with_another_vm(parent_cpu);
+		return;
 	}
 
-  // without CLONE_VM
-  // 1. creating one vcpu is enough
-  // 2. child host need one stack for `host_loop`
+	// without CLONE_VM
+	// 1. creating one vcpu is enough
+	// 2. child host need one stack for `host_loop`
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu, sysno);
 	if (child_cpu == NULL)
 		die_perror("DUP_VCPU");
@@ -943,7 +910,7 @@ void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		parent_cpu->syscall_parameter[2] = child_stack_pointer;
 
 		if (child_stack_pointer) {
-			emulate_fork_by_two_vcpu(parent_cpu);
+			emulate_fork_by_another_vcpu(parent_cpu);
 		} else {
 			die_perror(
 				"TODO : maybe do some check on the child_stack_pointer, segment fault is stupid");
@@ -956,7 +923,7 @@ void emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
-			emulate_fork_by_two_vcpu(parent_cpu);
+			emulate_fork_by_another_vcpu(parent_cpu);
 		}
 	}
 }
