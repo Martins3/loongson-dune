@@ -72,7 +72,7 @@ ebase_general_entry_end:
 .global host_loop
 .global switch_stack
 switch_stack:
-	move sp, a3
+	move sp, a1
 	dla t9, host_loop
 	bal host_loop 
 
