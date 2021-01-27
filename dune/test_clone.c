@@ -14,7 +14,7 @@
 static int childFunc(void *arg)
 {
 	printf("Child:  PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
-  printf("hello, this is a child process\n");
+	printf("hello, this is a child process\n");
 	return 0;
 }
 
@@ -28,21 +28,21 @@ int guest_clone()
 	pid_t pid = -1;
 	int args;
 
+	char a[] = "fork you\n";
+	__syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) - 1, 1,
+				 2, 3));
 
-	char a [] ="fork you\n";
-  __syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) -1, 1, 2, 3));
+	stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
+		     MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+	if (stack == MAP_FAILED)
+		return 111;
 
-  stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
-         MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
-  if (stack == MAP_FAILED)
-    return 111;
+	printf("1234\n");
+	printf("123\n");
+	printf("12\n");
+	printf("1\n");
 
-  printf("1234\n");
-  printf("123\n");
-  printf("12\n");
-  printf("1\n");
-
-  printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
+	printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
 
 	flags |= CLONE_VM;
 	// flags |= CLONE_FILES;
@@ -51,41 +51,38 @@ int guest_clone()
 
 	/* Allocate stack for child */
 
-  stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
-         MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
-  if (stack == MAP_FAILED)
-    return 111;
-
+	stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
+		     MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
+	if (stack == MAP_FAILED)
+		return 111;
 
 	stackTop = stack + STACK_SIZE; /* Assume stack grows downward */
 
-  printf("child new stack %p in guest_clone\n", stackTop);
+	printf("child new stack %p in guest_clone\n", stackTop);
 
-  if (clone(childFunc, stackTop, flags | SIGCHLD, &args) == -1)
-    return 112;
+	if (clone(childFunc, stackTop, flags | SIGCHLD, &args) == -1)
+		return 112;
 
 	/* Parent falls through to here. Wait for child; __WCLONE option is
        required for child notifying with signal other than SIGCHLD. */
 
-  printf("fuck\n");
-  printf("fuck\n");
-  printf("fuck\n");
-  printf("fuck\n");
-  printf("fuck\n");
-  printf("fuck\n");
+	printf("fuck\n");
+	printf("fuck\n");
+	printf("fuck\n");
+	printf("fuck\n");
+	printf("fuck\n");
+	printf("fuck\n");
 
-
-  pid = waitpid(-1, &status, __WALL);
-  if (pid == -1)
-    return 0;
+	pid = waitpid(-1, &status, __WALL);
+	if (pid == -1)
+		return 0;
 
 	printf("    Child PID=%ld\n", (long)pid);
 
 	return 0;
 }
 
-
 // int main(){
-  // guest_clone();
-  // return 0;
+// guest_clone();
+// return 0;
 // }
