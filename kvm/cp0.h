@@ -102,8 +102,7 @@
 
 #define INIT_VALUE_PRID 0x14c004
 
-// TODO 显然操作系统是没有对于 config 进行初始化的 ?
-// 所以应该不用进行初始化
+// TODO 显然 guest 是没有对于 config 进行初始化的 ?
 #define INIT_VALUE_CONFIG  0x80064603
 #define INIT_VALUE_CONFIG1 0xfeab5593
 #define INIT_VALUE_CONFIG2 0x825f055f
@@ -127,6 +126,7 @@
 #define INVALID_CODEFLOW_1 .word (0x42000028 | (1 << 11))
 #define INVALID_CODEFLOW_2 .word (0x42000028 | (2 << 11))
 #define INVALID_CODEFLOW_3 .word (0x42000028 | (3 << 11))
+#define INVALID_EBASE_POSITION 0x20
 #define UNIMP_ERROR .word (0x42000028 | (0xf << 11))
 #define HYPERCALL_DEBUG .word 0x42000028
 #define HYPERCALL .word 0x42000028

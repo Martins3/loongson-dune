@@ -233,7 +233,7 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	for (int i = 0; i < PAGESIZE / 4; ++i) {
 		int *x = (int *)addr;
 		x = x + i;
-		*x = (0x42000028 + (0x14 << 11));
+		*x = (0x42000028 + (INVALID_EBASE_POSITION << 11));
 	}
 
 	assert((void *)ebase_tlb_entry_end - (void *)ebase_error_entry_begin <
@@ -301,8 +301,11 @@ void init_ebase(struct kvm_cpu *cpu)
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
+  if(!cpu->ebase)
+    die_perror("init_cp0 with invalid ebase");
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
+  u64 INIT_VALUE_KSCRATCH1 = (u64) & (cpu->syscall_parameter);
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -626,13 +629,12 @@ err:
 
 int guest_clone();
 int guest_fork();
-int guest_execution();
 int guest_syscall()
 {
-	for (int i = 0; i < 10000; ++i) {
+	for (int i = 0; i < 10; ++i) {
 		printf("a\n");
 	}
-	return 1;
+	return 0;
 }
 
 // TODO 关于信号之类，需要从 guest 中间借鉴
@@ -647,10 +649,9 @@ int dune_enter()
 	if (cpu == NULL)
 		return -errno;
 	kvm_cpu__start(cpu, &regs);
-	// exit(guest_execution());
 	// exit(guest_clone());
-	exit(guest_fork());
-	// exit(guest_syscall());
+  exit(guest_fork());
+  // exit(guest_syscall());
 }
 
 int guest_fork()
@@ -666,7 +667,7 @@ int guest_fork()
 		printf("fork failed");
 		break;
 	case 0:
-		printf("thsi is child\n");
+		printf("this is child\n");
 		break;
 	default:
 		printf("this is parent\n");
@@ -1002,7 +1003,10 @@ void host_loop(struct kvm_cpu *cpu)
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
       struct kvm_cpu * child_cpu = emulate_fork(cpu, sysno);
-      cpu = child_cpu != NULL ? child_cpu : cpu;
+      if(child_cpu){
+        cpu = child_cpu;
+        continue;
+      }
 		} else {
 			do_syscall6(cpu, false);
 		}
