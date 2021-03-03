@@ -256,3 +256,13 @@
 #define SYS_EXECLOAD (MIPS_N64_OFFSET + 270)
 #define SYS_EXECAT (MIPS_N64_OFFSET + 316)
 #define SYS_CLONE3 (MIPS_N64_OFFSET + 435)
+
+#if __mips_isa_rev >= 6
+#define SYSCALL_CLOBBERLIST \
+	"$1", "$3", "$10", "$11", "$12", "$13", \
+	"$14", "$15", "$24", "$25", "memory"
+#else
+#define SYSCALL_CLOBBERLIST \
+	"$1", "$3", "$10", "$11", "$12", "$13", \
+	"$14", "$15", "$24", "$25", "hi", "lo", "memory"
+#endif

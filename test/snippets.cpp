@@ -29,6 +29,7 @@
 #include <unordered_map>
 
 using namespace std;
+typedef unsigned long long int u64;
 
 #include "syscall_arch.h"
 #include "cp0.h"
@@ -94,7 +95,6 @@ void test_syscall()
 				 2, 3));
 }
 
-typedef unsigned long long int u64;
 
 void tlb_hi(u64 hi)
 {

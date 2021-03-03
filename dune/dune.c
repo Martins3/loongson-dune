@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include "cp0.h"
-#include "syscall_arch.h"
+// #include "syscall_arch.h"
 
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -301,11 +301,11 @@ void init_ebase(struct kvm_cpu *cpu)
 // cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static int init_cp0(struct kvm_cpu *cpu)
 {
-  if(!cpu->ebase)
-    die_perror("init_cp0 with invalid ebase");
+	if (!cpu->ebase)
+		die_perror("init_cp0 with invalid ebase");
 	u64 INIT_VALUE_EBASE = (u64)cpu->ebase + MIPS_XKPHYSX_CACHED;
 	u64 INIT_VALUE_USERLOCAL = get_tp();
-  u64 INIT_VALUE_KSCRATCH1 = (u64) & (cpu->syscall_parameter);
+	u64 INIT_VALUE_KSCRATCH1 = (u64) & (cpu->syscall_parameter);
 
 	int i;
 	struct cp0_reg one_regs[] = {
@@ -555,7 +555,7 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 
 	vacate_current_stack(cpu);
 guest_entry:
-	return 0;
+	return 0; // 不能去掉，否则 guest_entry 后面没有语句，会报错
 }
 
 // TODO we need a better machanism to deal with cpu_id
@@ -649,8 +649,9 @@ int dune_enter()
 		return -errno;
 	kvm_cpu__start(cpu, &regs);
 	// exit(guest_clone());
-  exit(guest_fork());
-  // exit(guest_syscall());
+	// exit(guest_fork());
+	// exit(guest_syscall());
+	return 0;
 }
 
 int guest_fork()
@@ -1001,11 +1002,11 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
-      struct kvm_cpu * child_cpu = emulate_fork(cpu, sysno);
-      if(child_cpu){
-        cpu = child_cpu;
-        continue;
-      }
+			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
+			if (child_cpu) {
+				cpu = child_cpu;
+				continue;
+			}
 		} else {
 			do_syscall6(cpu, false);
 		}
@@ -1015,9 +1016,10 @@ void host_loop(struct kvm_cpu *cpu)
 			die_perror("KVM_GET_REGS : host_loop");
 
 		// dump_kvm_regs(cpu->debug_fd, regs);
-    regs.gpr[2] = cpu->syscall_parameter[0];
+		regs.gpr[2] = cpu->syscall_parameter[0];
 		regs.gpr[7] = cpu->syscall_parameter[4];
-		cpu->kvm_run->hypercall.ret = cpu->syscall_parameter[0]; // loongson kvm
+		cpu->kvm_run->hypercall.ret =
+			cpu->syscall_parameter[0]; // loongson kvm
 
 		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
 		// regs.gpr[2], regs.gpr[7]);
@@ -1039,16 +1041,20 @@ void host_loop(struct kvm_cpu *cpu)
 	}
 }
 
-int main(int argc, char *argv[])
-{
-	if (dune_enter()) {
-		pr_err("KVM failed");
-	}
+/**
+ * int main(int argc, char *argv[])
+ * {
+ * 	if (dune_enter()) {
+ * 		pr_err("KVM failed");
+ * 	}
+ * 
+ * 	printf("%s\n", "hello");
+ * 	return 12;
+ * }
+ */
 
-	return 12;
-}
 
-// mabye a epecial hypercall can lead to escape the process
+// TODO mabye a epecial hypercall can lead to escape the dune
 void escape()
 {
 }
