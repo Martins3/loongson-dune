@@ -91,9 +91,10 @@
 #define STATUS_BIT_SX (1 << 6)
 #define STATUS_BIT_KX (1 << 7)
 #define STATUS_BIT_FR (1 << 26)
-#define STATUS_BIT_CP0 (1 << 28)
-#define STATUS_BIT_MM (1 << 30)
-#define INIT_VALUE_STATUS STATUS_BIT_UX | STATUS_BIT_KX | STATUS_BIT_FR |STATUS_BIT_CP0 |STATUS_BIT_MM
+#define STATUS_BIT_CP0 (1 << 28) // CP0
+#define STATUS_BIT_CP1 (1 << 29) // FPU
+#define STATUS_BIT_MM (1 << 30) // 多媒体指令协处理器
+#define INIT_VALUE_STATUS STATUS_BIT_UX | STATUS_BIT_KX | STATUS_BIT_FR |STATUS_BIT_CP0 | STATUS_BIT_CP1 |STATUS_BIT_MM
 // TODO how interrupt works ?
 // TODO what's meaning of EIC and VI ?
 #define INIT_VALUE_INTCTL 0xfc000100
@@ -124,11 +125,10 @@
 #define INIT_VALUE_KSCRATCH6 0
 
 #define INVALID_CODEFLOW_1 .word (0x42000028 | (1 << 11))
-#define INVALID_CODEFLOW_2 .word (0x42000028 | (2 << 11))
+#define INVALID_CODEFLOW_2 .word (0x42000028 | (22 << 11))
 #define INVALID_CODEFLOW_3 .word (0x42000028 | (3 << 11))
 #define INVALID_EBASE_POSITION 0x20
 #define UNIMP_ERROR .word (0x42000028 | (0xf << 11))
-#define HYPERCALL_DEBUG .word 0x42000028
 #define HYPERCALL .word 0x42000028
 
 /* Some CP0 registers */

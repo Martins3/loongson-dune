@@ -46,10 +46,12 @@ nop
 mfc0 k1, C0_CAUSE
 dsrl k1, k1, 2
 andi k1, k1, 0x1f
-li k0, EXCCODE_TLBL
-
-beq k1, k0, ebase_tlb_entry_begin
+# 标记 k0, 让 k1 在 VCPU Registers Dump 中间容易查找
+li k0, 0xff3
 INVALID_CODEFLOW_2
+
+# beq k1, k0, ebase_tlb_entry_begin
+
 syscall:
 dmfc0 k0, C0_KSCRATCH1
 sd $2, 0(k0)

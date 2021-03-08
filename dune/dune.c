@@ -379,15 +379,20 @@ static int init_cp0(struct kvm_cpu *cpu)
 	return 0;
 }
 
-// TODO /home/maritns3/core/loongson-dune/cross/arch/mips/include/uapi/asm/kvm.h
-// definition of `struct fpu` is empty
-//
-// TODO use fpu in guest will cause vm exit ?
-//
-// TODO 当前 qemu 使用的 fpu 是不是需要拷贝到 guest 中间 ?
-static int init_fpu()
+// in arch/mips/include/uapi/asm/kvm.h, definition of `struct fpu` is empty
+// 这是因为在内核中间，只有两个
+static int init_fpu(struct kvm_cpu *cpu)
 {
-	return -errno;
+  struct kvm_enable_cap cap;
+  memset(&cap, 0, sizeof(cap));
+  cap.cap = KVM_CAP_MIPS_FPU;
+
+	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP , &cap) <0 ){
+    pr_err("Unable enable fpu in guest");
+    return -errno;
+  }
+  // 效果 : vcpu->arch.fpu_enabled = true;
+  return 0;
 }
 
 static int init_simd()
@@ -402,7 +407,9 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	if (init_cp0(cpu) < 0)
 		return -errno;
 
-	init_fpu();
+	if (init_fpu(cpu) < 0) {
+		return -errno;
+	}
 
 	init_simd();
 
@@ -547,13 +554,17 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 	// dump_kvm_regs(STDOUT_FILENO, *regs);
 
 	if (kvm__init_guest(cpu) < 0) {
-		die_perror("guest init\n");
+		pr_err("guest init\n");
+		return -errno;
 	}
 
-	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0)
-		die_perror("KVM_SET_REGS failed");
+	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0) {
+		pr_err("KVM_SET_REGS failed");
+		return -errno;
+	}
 
 	vacate_current_stack(cpu);
+	die_perror("host never reach here\n");
 guest_entry:
 	return 0; // 不能去掉，否则 guest_entry 后面没有语句，会报错
 }
@@ -623,7 +634,7 @@ err_vm_fd:
 err_sys_fd:
 	close(dune->vm_fd);
 err:
-	die_perror("setup_vm_with_one_cpu");
+	pr_err("setup_vm_with_one_cpu");
 	return NULL;
 }
 
@@ -645,9 +656,12 @@ int dune_enter()
 	struct kvm_regs regs;
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	struct kvm_cpu *cpu = setup_vm_with_one_cpu(0);
-	if (cpu == NULL)
+	if (cpu == NULL) {
 		return -errno;
-	kvm_cpu__start(cpu, &regs);
+	}
+	if (kvm_cpu__start(cpu, &regs)) {
+		return -errno;
+	}
 	// exit(guest_clone());
 	// exit(guest_fork());
 	// exit(guest_syscall());
@@ -1052,7 +1066,6 @@ void host_loop(struct kvm_cpu *cpu)
  * 	return 12;
  * }
  */
-
 
 // TODO mabye a epecial hypercall can lead to escape the dune
 void escape()
