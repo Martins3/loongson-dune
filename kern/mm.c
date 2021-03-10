@@ -94,7 +94,7 @@ int proc_init(void)
 	    :
 	    : "r"(&p)
 	    : "memory");
-  pr_debug("value : 0x%llx\n", mm_bits(p.pagegrain));
+  pr_debug("value : 0x%llx\n", mm_bits(p.status));
 	return 0;
 }
 
@@ -102,8 +102,6 @@ int proc_init(void)
 void proc_cleanup(void)
 {
 	pr_debug("Bye start\n");
-	// asm(".word 0x0");
-  asm(".word 0x42000028");
 	pr_debug("Bye end\n");
 }
 

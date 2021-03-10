@@ -9,13 +9,28 @@
 #include <assert.h> // assert
 #include <fcntl.h> // open
 
-int dune_enter();
+void fuck(int a, int b)
+{
+	a = a + 100;
+	b = b + 101;
+}
+
+void fuck_float(double a, double b)
+{
+	a = a + 100.0;
+	b = b + 101.0;
+}
+
+void call_fuck_float()
+{
+	fuck_float(11.0, 22.0);
+}
+
 int main(int argc, char *argv[])
 {
-  // 找到 gcc 内联汇编
-	if (dune_enter()) {
-		return 1;
-	}
-	printf("hello\n");
+	double a = 12;
+	a = a + 1;
+	printf("%lf", a);
+
 	return 0;
 }

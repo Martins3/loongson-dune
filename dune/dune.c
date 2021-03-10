@@ -1067,7 +1067,7 @@ void host_loop(struct kvm_cpu *cpu)
  * }
  */
 
-// TODO mabye a epecial hypercall can lead to escape the dune
+// TODO mabye a special hypercall which help process escape the dune
 void escape()
 {
 }
