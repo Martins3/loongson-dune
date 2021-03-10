@@ -104,3 +104,41 @@ dune_clone:
 	move 	$4, $2
 	li	$2, 5058
 	syscall
+
+// lasx 一个寄存器的大小是 # define FPU_REG_WIDTH	256
+LEAF(__kvm_restore_lasx)
+	xvld_b	0,  16 * 0,  a0
+	xvld_b	1,  16 * 1,  a0
+	xvld_b	2,  16 * 2,  a0
+	xvld_b	3,  16 * 3,  a0
+	xvld_b	4,  16 * 4,  a0
+	xvld_b	5,  16 * 5,  a0
+	xvld_b	6,  16 * 6,  a0
+	xvld_b	7,  16 * 7,  a0
+	xvld_b	8,  16 * 8,  a0
+	xvld_b	9,  16 * 9,  a0
+	xvld_b	10, 16 * 10, a0
+	xvld_b	11, 16 * 11, a0
+	xvld_b	12, 16 * 12, a0
+	xvld_b	13, 16 * 13, a0
+	xvld_b	14, 16 * 14, a0
+	xvld_b	15, 16 * 15, a0
+	xvld_b	16, 16 * 16, a0
+	xvld_b	17, 16 * 17, a0
+	xvld_b	18, 16 * 18, a0
+	xvld_b	19, 16 * 19, a0
+	xvld_b	20, 16 * 20, a0
+	xvld_b	21, 16 * 21, a0
+	xvld_b	22, 16 * 22, a0
+	xvld_b	23, 16 * 23, a0
+	xvld_b	24, 16 * 24, a0
+	xvld_b	25, 16 * 25, a0
+	xvld_b	26, 16 * 26, a0
+	xvld_b	27, 16 * 27, a0
+	xvld_b	28, 16 * 28, a0
+	xvld_b	29, 16 * 29, a0
+	xvld_b	30, 16 * 30, a0
+	xvld_b	31, 16 * 31, a0
+	jr	ra
+	 nop
+	END(__kvm_restore_lasx)

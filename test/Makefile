@@ -17,6 +17,7 @@ so.out: hello_world.c libdune.so
 
 clean:
 	rm -f $(TEST)
+	$(MAKE) -C ../dune/ clean
 
 libdune.a:
 	$(MAKE) -C ../dune 

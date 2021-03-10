@@ -48,11 +48,27 @@ struct kvm {
 struct thread_info {
 	struct kvm_regs regs;
 	u64 epc;
+  // TODO
 	// simd
 	// fpu
 };
 
-// reference : /home/maritns3/core/tool/mips/include/kvm/kvm-cpu-arch.h
+// reference from arch/mips/include/asm/processor.h
+# define FPU_REG_WIDTH	256
+#define NUM_FPU_REGS	32
+
+union fpureg {
+	__u32	val32[FPU_REG_WIDTH / 32];
+	__u64	val64[FPU_REG_WIDTH / 64];
+};
+
+struct mips_fpu_struct {
+	union fpureg	fpr[NUM_FPU_REGS];
+	unsigned int	fcr31;
+	unsigned int	msacsr;
+};
+
+// reference : kvmtool/mips/include/kvm/kvm-cpu-arch.h
 struct kvm_cpu {
 	unsigned long cpu_id;
 	struct kvm *kvm;
@@ -379,6 +395,8 @@ static int init_cp0(struct kvm_cpu *cpu)
 	return 0;
 }
 
+extern void __kvm_restore_lasx();
+
 // in arch/mips/include/uapi/asm/kvm.h, definition of `struct fpu` is empty
 // 这是因为在内核中间，只有两个
 static int init_fpu(struct kvm_cpu *cpu)
@@ -392,6 +410,8 @@ static int init_fpu(struct kvm_cpu *cpu)
     return -errno;
   }
   // 效果 : vcpu->arch.fpu_enabled = true;
+
+
   return 0;
 }
 
@@ -721,11 +741,6 @@ struct clone3_args {
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
 void dup_fpu(struct kvm_cpu *child_cpu, struct thread_info *info)
-{
-	// TODO
-}
-
-void dup_simd(struct kvm_cpu *child_cpu, struct thread_info *info)
 {
 	// TODO
 }

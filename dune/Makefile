@@ -1,10 +1,10 @@
 CFLAGS=-g -DLOONGSON
 all: libdune.a libdune.so
 
-dune.o:dune.c
+dune.o:dune.c cp0.h
 	gcc $(CFLAGS) $^ -c -o $@
 
-exception.o:exception.S
+exception.o:exception.S cp0.h
 	gcc $(CFLAGS) $^ -c -o $@
 
 libdune.a: exception.o dune.o
@@ -28,3 +28,6 @@ dune.out:
 
 gdb: dune.out
 	gdb -x debug.txt dune.out
+
+clean:
+	rm -f libdune.a dune.o exception.o libdune.so
