@@ -44,3 +44,5 @@ dune.mod.c
 mm/mm.ko
 mm/mm.mod
 mm/mm.mod.c
+test/fpu
+test/hello_world

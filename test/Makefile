@@ -1,26 +1,25 @@
 TESTSRCS ?= $(wildcard *.c)
-TEST := $(TESTSRCS:.c=.out)
+TEST := $(TESTSRCS:.c=)
 
-$(info == $(LIBSRCS))
+$(info == $(TESTSRCS))
 $(info == $(TEST))
 
-LIBDUNE := ../dune/libdune.a
+LIBDIR := ../dune
 
-%.out: %.c $(LIBDUNE)
-	gcc $< $(LIBDUNE)  -o $@
+LIBDUNE := $(LIBDIR)/libdune.a
+
+DEPS_FILES := dune.c exception.S cp0.h
+DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
+
+$(info $(DEPS))
+
 
 all: $(TEST)
 
-so.out: hello_world.c libdune.so
-	gcc -L../dune -l:libdune.so $< -o $@ -Wl,-R../dune
-	./$@
+%: %.c $(DEPS)
+	$(MAKE) -C ../dune 
+	gcc $< $(LIBDUNE) -o $@
 
 clean:
 	rm -f $(TEST)
 	$(MAKE) -C ../dune/ clean
-
-libdune.a:
-	$(MAKE) -C ../dune 
-
-libdune.so:
-	$(MAKE) -C ../dune 

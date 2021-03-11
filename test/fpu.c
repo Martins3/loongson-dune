@@ -10,12 +10,20 @@
 #include <fcntl.h> // open
 
 int dune_enter();
+
+void g(double a)
+{
+	a = a + 1.0;
+}
 int main(int argc, char *argv[])
 {
-  // 找到 gcc 内联汇编
+	// 找到 gcc 内联汇编
+	double x = 12.0;
+	g(x);
 	if (dune_enter()) {
 		return 1;
 	}
-	printf("hello\n");
+	x = x + 1;
+	printf("x=%lf\n", x);
 	return 0;
 }

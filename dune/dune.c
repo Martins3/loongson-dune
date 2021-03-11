@@ -48,24 +48,24 @@ struct kvm {
 struct thread_info {
 	struct kvm_regs regs;
 	u64 epc;
-  // TODO
+	// TODO
 	// simd
 	// fpu
 };
 
 // reference from arch/mips/include/asm/processor.h
-# define FPU_REG_WIDTH	256
-#define NUM_FPU_REGS	32
+#define FPU_REG_WIDTH 256
+#define NUM_FPU_REGS 32
 
 union fpureg {
-	__u32	val32[FPU_REG_WIDTH / 32];
-	__u64	val64[FPU_REG_WIDTH / 64];
+	__u32 val32[FPU_REG_WIDTH / 32];
+	__u64 val64[FPU_REG_WIDTH / 64];
 };
 
 struct mips_fpu_struct {
-	union fpureg	fpr[NUM_FPU_REGS];
-	unsigned int	fcr31;
-	unsigned int	msacsr;
+	union fpureg fpr[NUM_FPU_REGS];
+	unsigned int fcr31;
+	unsigned int msacsr;
 };
 
 // reference : kvmtool/mips/include/kvm/kvm-cpu-arch.h
@@ -386,7 +386,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(one_regs[i].reg)) <
 		    0) {
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-			die_perror("KVM_SET_ONE_REG");
+			return -errno;
 		} else {
 			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
 			// one_regs[i].v);
@@ -395,24 +395,48 @@ static int init_cp0(struct kvm_cpu *cpu)
 	return 0;
 }
 
-extern void __kvm_restore_lasx();
+extern void get_fpu_regs(struct mips_fpu_struct *);
+
+#define KVM_REG_MIPS_VEC_256(n) (KVM_REG_MIPS_FPR | KVM_REG_SIZE_U256 | (n))
 
 // in arch/mips/include/uapi/asm/kvm.h, definition of `struct fpu` is empty
 // 这是因为在内核中间，只有两个
 static int init_fpu(struct kvm_cpu *cpu)
 {
-  struct kvm_enable_cap cap;
-  memset(&cap, 0, sizeof(cap));
-  cap.cap = KVM_CAP_MIPS_FPU;
+	struct kvm_enable_cap cap;
+	memset(&cap, 0, sizeof(cap));
+	cap.cap = KVM_CAP_MIPS_FPU;
 
-	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP , &cap) <0 ){
-    pr_err("Unable enable fpu in guest");
-    return -errno;
-  }
-  // 效果 : vcpu->arch.fpu_enabled = true;
+	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
+		pr_err("Unable enable fpu in guest");
+		return -errno;
+	}
 
+  cap.cap = KVM_CAP_MIPS_MSA;
+	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
+		pr_err("Unable enable msa in guest");
+		return -errno;
+	}
 
-  return 0;
+  // 从 kvm_arch_init_vm 可以看到不需要手动打开 lasx
+
+	struct mips_fpu_struct fpu_regs;
+	get_fpu_regs(&fpu_regs);
+
+	for (int i = 0; i < NUM_FPU_REGS; ++i) {
+		struct kvm_one_reg reg;
+    reg.id = KVM_REG_MIPS_VEC_256(i);
+    reg.addr = (u64)&(fpu_regs.fpr[i]);
+		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
+			pr_err("KVM_SET_ONE_REG fpu %d failed", i);
+      // TODO -errno 的原理是什么 ?
+      return -errno;
+		} else {
+			pr_info("KVM_SET_ONE_REG fpu(%d)=%lf", i, *(double *)reg.addr);
+		}
+	}
+
+	return 0;
 }
 
 static int init_simd()
@@ -809,8 +833,6 @@ void get_parent_thread_info(struct kvm_cpu *parent_cpu,
 	info->epc = get_cpu_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
 
 	// TODO fpu
-
-	// TODO simd
 }
 
 void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *info,
@@ -827,8 +849,6 @@ void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *info,
 		die_perror("KVM_SET_REGS");
 
 	dup_fpu(child_cpu, info);
-
-	dup_simd(child_cpu, info);
 
 	if (init_cp0(child_cpu) < 0)
 		return;

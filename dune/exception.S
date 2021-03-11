@@ -80,6 +80,7 @@ switch_stack:
 
 
 // TODO @function , maybe add this to other functions too
+// musl 的作者为什么不采用 LEAF 和 END ?
 .set	noreorder
 .global	dune_clone
 .type	dune_clone,@function
@@ -105,40 +106,90 @@ dune_clone:
 	li	$2, 5058
 	syscall
 
-// lasx 一个寄存器的大小是 # define FPU_REG_WIDTH	256
-LEAF(__kvm_restore_lasx)
-	xvld_b	0,  16 * 0,  a0
-	xvld_b	1,  16 * 1,  a0
-	xvld_b	2,  16 * 2,  a0
-	xvld_b	3,  16 * 3,  a0
-	xvld_b	4,  16 * 4,  a0
-	xvld_b	5,  16 * 5,  a0
-	xvld_b	6,  16 * 6,  a0
-	xvld_b	7,  16 * 7,  a0
-	xvld_b	8,  16 * 8,  a0
-	xvld_b	9,  16 * 9,  a0
-	xvld_b	10, 16 * 10, a0
-	xvld_b	11, 16 * 11, a0
-	xvld_b	12, 16 * 12, a0
-	xvld_b	13, 16 * 13, a0
-	xvld_b	14, 16 * 14, a0
-	xvld_b	15, 16 * 15, a0
-	xvld_b	16, 16 * 16, a0
-	xvld_b	17, 16 * 17, a0
-	xvld_b	18, 16 * 18, a0
-	xvld_b	19, 16 * 19, a0
-	xvld_b	20, 16 * 20, a0
-	xvld_b	21, 16 * 21, a0
-	xvld_b	22, 16 * 22, a0
-	xvld_b	23, 16 * 23, a0
-	xvld_b	24, 16 * 24, a0
-	xvld_b	25, 16 * 25, a0
-	xvld_b	26, 16 * 26, a0
-	xvld_b	27, 16 * 27, a0
-	xvld_b	28, 16 * 28, a0
-	xvld_b	29, 16 * 29, a0
-	xvld_b	30, 16 * 30, a0
-	xvld_b	31, 16 * 31, a0
+/*
+ * LEAF - declare leaf routine
+ */
+#define LEAF(symbol)					\
+		.globl	symbol;				\
+		.align	2;				\
+		.type	symbol, @function;		\
+		.ent	symbol, 0;			\
+symbol:		.frame	sp, 0, ra;			\
+		.cfi_startproc;				\
+		.insn
+
+/*
+ * END - mark end of function
+ */
+#define END(function)					\
+		.cfi_endproc;				\
+		.end	function;			\
+		.size	function, .-function
+
+.macro	insn_if_mips enc
+.insn
+.word (\enc)
+.endm
+
+/*
+ * starting with binutils 2.24.51.20140729, MIPS binutils warn about mixing
+ * hardfloat and softfloat object files.  The kernel build uses soft-float by
+ * default, so we also need to pass -msoft-float along to GAS if it supports it.
+ * But this in turn causes assembler errors in files which access hardfloat
+ * registers.  We detect if GAS supports "-msoft-float" in the Makefile and
+ * explicitly put ".set hardfloat" where floating point registers are touched.
+ */
+#ifdef GAS_HAS_SET_HARDFLOAT
+#define SET_HARDFLOAT .set hardfloat
+#else
+#define SET_HARDFLOAT
+#endif
+
+#define PTR_ADDU	daddu
+
+.macro	xvst_b	wd, off, base
+.set	push
+.set	noat
+PTR_ADDU $1, \base, \off
+insn_if_mips 0xe8000819 | (\wd << 6)
+.set	pop
+.endm
+
+#define VCPU_FPR (256 / 8)
+
+LEAF(get_fpu_regs)
+	xvst_b	0,  VCPU_FPR * 0,  a0
+	xvst_b	1,  VCPU_FPR * 1,  a0
+	xvst_b	2,  VCPU_FPR * 2,  a0
+	xvst_b	3,  VCPU_FPR * 3,  a0
+	xvst_b	4,  VCPU_FPR * 4,  a0
+	xvst_b	5,  VCPU_FPR * 5,  a0
+	xvst_b	6,  VCPU_FPR * 6,  a0
+	xvst_b	7,  VCPU_FPR * 7,  a0
+	xvst_b	8,  VCPU_FPR * 8,  a0
+	xvst_b	9,  VCPU_FPR * 9,  a0
+	xvst_b	10, VCPU_FPR * 10, a0
+	xvst_b	11, VCPU_FPR * 11, a0
+	xvst_b	12, VCPU_FPR * 12, a0
+	xvst_b	13, VCPU_FPR * 13, a0
+	xvst_b	14, VCPU_FPR * 14, a0
+	xvst_b	15, VCPU_FPR * 15, a0
+	xvst_b	16, VCPU_FPR * 16, a0
+	xvst_b	17, VCPU_FPR * 17, a0
+	xvst_b	18, VCPU_FPR * 18, a0
+	xvst_b	19, VCPU_FPR * 19, a0
+	xvst_b	20, VCPU_FPR * 20, a0
+	xvst_b	21, VCPU_FPR * 21, a0
+	xvst_b	22, VCPU_FPR * 22, a0
+	xvst_b	23, VCPU_FPR * 23, a0
+	xvst_b	24, VCPU_FPR * 24, a0
+	xvst_b	25, VCPU_FPR * 25, a0
+	xvst_b	26, VCPU_FPR * 26, a0
+	xvst_b	27, VCPU_FPR * 27, a0
+	xvst_b	28, VCPU_FPR * 28, a0
+	xvst_b	29, VCPU_FPR * 29, a0
+	xvst_b	30, VCPU_FPR * 30, a0
+	xvst_b	31, VCPU_FPR * 31, a0
 	jr	ra
 	 nop
-	END(__kvm_restore_lasx)
+END(get_fpu_regs)
