@@ -150,9 +150,13 @@ symbol:		.frame	sp, 0, ra;			\
 .macro	xvst_b	wd, off, base
 .set	push
 .set	noat
+SET_HARDFLOAT
 PTR_ADDU $1, \base, \off
 insn_if_mips 0xe8000819 | (\wd << 6)
 .set	pop
+.endm
+
+.macro	insn32_if_mm enc
 .endm
 
 #define VCPU_FPR (256 / 8)
@@ -193,3 +197,31 @@ LEAF(get_fpu_regs)
 	jr	ra
 	 nop
 END(get_fpu_regs)
+
+#define fcr31        $31      /* FPU status register */
+LEAF(get_fcsr)
+	.set	push
+	cfc1	t0, fcr31
+	sw	t0, 0(a0)
+	jr	ra
+	nop
+	.set	pop
+END(get_fcsr)
+
+.macro	_ctcmsa	cd, rs
+.set	push
+.set	noat
+SET_HARDFLOAT
+move	$1, \rs
+insn_if_mips 0x783e0819 | (\cd << 6)
+insn32_if_mm 0x583e0816 | (\cd << 6)
+.set	pop
+.endm
+
+#define MSA_CSR		1
+LEAF(get_msacsr)
+	_ctcmsa	MSA_CSR, t0
+	sw	t0, 0(a0)
+	jr	ra
+	nop
+END(get_msacsr)

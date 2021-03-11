@@ -396,6 +396,8 @@ static int init_cp0(struct kvm_cpu *cpu)
 }
 
 extern void get_fpu_regs(struct mips_fpu_struct *);
+extern void get_fcsr(unsigned int *);
+extern void get_msacsr(unsigned int *);
 
 #define KVM_REG_MIPS_VEC_256(n) (KVM_REG_MIPS_FPR | KVM_REG_SIZE_U256 | (n))
 
@@ -404,6 +406,7 @@ extern void get_fpu_regs(struct mips_fpu_struct *);
 static int init_fpu(struct kvm_cpu *cpu)
 {
 	struct kvm_enable_cap cap;
+	struct kvm_one_reg reg;
 	memset(&cap, 0, sizeof(cap));
 	cap.cap = KVM_CAP_MIPS_FPU;
 
@@ -412,36 +415,47 @@ static int init_fpu(struct kvm_cpu *cpu)
 		return -errno;
 	}
 
-  cap.cap = KVM_CAP_MIPS_MSA;
+	cap.cap = KVM_CAP_MIPS_MSA;
 	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
 		pr_err("Unable enable msa in guest");
 		return -errno;
 	}
 
-  // 从 kvm_arch_init_vm 可以看到不需要手动打开 lasx
+	// 从 kvm_arch_init_vm 可以看到不需要手动打开 lasx
 
 	struct mips_fpu_struct fpu_regs;
 	get_fpu_regs(&fpu_regs);
+	get_fcsr(&fpu_regs.fcr31);
+	get_msacsr(&fpu_regs.msacsr);
 
 	for (int i = 0; i < NUM_FPU_REGS; ++i) {
-		struct kvm_one_reg reg;
-    reg.id = KVM_REG_MIPS_VEC_256(i);
-    reg.addr = (u64)&(fpu_regs.fpr[i]);
+		reg.id = KVM_REG_MIPS_VEC_256(i);
+		reg.addr = (u64) & (fpu_regs.fpr[i]);
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
 			pr_err("KVM_SET_ONE_REG fpu %d failed", i);
-      // TODO -errno 的原理是什么 ?
-      return -errno;
+			// TODO -errno 的原理是什么 ?
+			return -errno;
 		} else {
-			pr_info("KVM_SET_ONE_REG fpu(%d)=%lf", i, *(double *)reg.addr);
+			pr_info("KVM_SET_ONE_REG fpu(%d)=%lf", i,
+				*(double *)reg.addr);
 		}
 	}
 
-	return 0;
-}
+	reg.id = KVM_REG_MIPS_FCR_CSR;
+  reg.addr = (u64) & (fpu_regs.fcr31);
+	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
+		pr_err("KVM_SET_ONE_REG (fcr csr) failed");
+		return -errno;
+	}
 
-static int init_simd()
-{
-	return -errno;
+	reg.id = KVM_REG_MIPS_MSA_CSR;
+  reg.addr = (u64) & (fpu_regs.msacsr);
+	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
+		pr_err("KVM_SET_ONE_REG (msa csr) failed");
+		return -errno;
+	}
+
+	return 0;
 }
 
 static int kvm__init_guest(struct kvm_cpu *cpu)
@@ -454,8 +468,6 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 	if (init_fpu(cpu) < 0) {
 		return -errno;
 	}
-
-	init_simd();
 
 	return 0;
 }
