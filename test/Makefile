@@ -1,9 +1,6 @@
 TESTSRCS ?= $(wildcard *.c)
 TEST := $(TESTSRCS:.c=)
 
-$(info == $(TESTSRCS))
-$(info == $(TEST))
-
 LIBDIR := ../dune
 
 LIBDUNE := $(LIBDIR)/libdune.a
@@ -11,7 +8,9 @@ LIBDUNE := $(LIBDIR)/libdune.a
 DEPS_FILES := dune.c exception.S cp0.h
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
-$(info $(DEPS))
+$(info == $(TESTSRCS))
+$(info == $(TEST))
+$(info == $(DEPS))
 
 
 all: $(TEST)

@@ -21,6 +21,15 @@ u64 mm_bits(const u64 d){
   return d;
 }
 
+
+void debug_fcr(void){
+  struct task_struct *task_list;
+  for_each_process(task_list) {
+    pr_debug("== %s [%d]\n", task_list->comm, task_list->pid);
+    pr_debug("fcr : 0x%llx\n", mm_bits(task_list->thread.fpu.fcr31));
+  }
+}
+
 #undef offsetof
 #ifdef __compiler_offsetof
 #define offsetof(TYPE, MEMBER)	__compiler_offsetof(TYPE, MEMBER)
@@ -95,6 +104,10 @@ int proc_init(void)
 	    : "r"(&p)
 	    : "memory");
   pr_debug("value : 0x%llx\n", mm_bits(p.status));
+
+  debug_fcr();
+
+
 	return 0;
 }
 

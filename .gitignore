@@ -46,3 +46,6 @@ mm/mm.mod
 mm/mm.mod.c
 test/fpu
 test/hello_world
+kern/mm.ko
+kern/mm.mod.c
+kern/.tmp_versions/mm.mod
