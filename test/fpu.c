@@ -11,7 +11,7 @@
 
 int dune_enter();
 
-void g(double a)
+void g(double a, double b)
 {
 	a = a + 1.0;
 }
@@ -19,7 +19,8 @@ int main(int argc, char *argv[])
 {
 	// 找到 gcc 内联汇编
 	double x = 12.0;
-	g(x);
+	double y = 666.0;
+	g(x, y);
 	if (dune_enter()) {
 		return 1;
 	}
