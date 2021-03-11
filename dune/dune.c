@@ -386,7 +386,7 @@ static int init_cp0(struct kvm_cpu *cpu)
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(one_regs[i].reg)) <
 		    0) {
 			pr_err("KVM_SET_ONE_REG %s", one_regs[i].name);
-			return -errno;
+			return -1;
 		} else {
 			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
 			// one_regs[i].v);
@@ -402,7 +402,6 @@ extern void get_msacsr(unsigned int *);
 #define KVM_REG_MIPS_VEC_256(n) (KVM_REG_MIPS_FPR | KVM_REG_SIZE_U256 | (n))
 
 // in arch/mips/include/uapi/asm/kvm.h, definition of `struct fpu` is empty
-// 这是因为在内核中间，只有两个
 static int init_fpu(struct kvm_cpu *cpu)
 {
 	struct kvm_enable_cap cap;
@@ -412,13 +411,13 @@ static int init_fpu(struct kvm_cpu *cpu)
 
 	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
 		pr_err("Unable enable fpu in guest");
-		return -errno;
+		return -1;
 	}
 
 	cap.cap = KVM_CAP_MIPS_MSA;
 	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
 		pr_err("Unable enable msa in guest");
-		return -errno;
+		return -1;
 	}
 
 	// 从 kvm_arch_init_vm 可以看到不需要手动打开 lasx
@@ -433,8 +432,7 @@ static int init_fpu(struct kvm_cpu *cpu)
 		reg.addr = (u64) & (fpu_regs.fpr[i]);
 		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
 			pr_err("KVM_SET_ONE_REG fpu %d failed", i);
-			// TODO -errno 的原理是什么 ?
-			return -errno;
+			return -1;
 		} else {
 			pr_info("KVM_SET_ONE_REG fpu(%d)=%lf", i,
 				*(double *)reg.addr);
@@ -442,17 +440,17 @@ static int init_fpu(struct kvm_cpu *cpu)
 	}
 
 	reg.id = KVM_REG_MIPS_FCR_CSR;
-  reg.addr = (u64) & (fpu_regs.fcr31);
+	reg.addr = (u64) & (fpu_regs.fcr31);
 	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
 		pr_err("KVM_SET_ONE_REG (fcr csr) failed");
-		return -errno;
+		return -1;
 	}
 
 	reg.id = KVM_REG_MIPS_MSA_CSR;
-  reg.addr = (u64) & (fpu_regs.msacsr);
+	reg.addr = (u64) & (fpu_regs.msacsr);
 	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
 		pr_err("KVM_SET_ONE_REG (msa csr) failed");
-		return -errno;
+		return -1;
 	}
 
 	return 0;
@@ -462,11 +460,14 @@ static int kvm__init_guest(struct kvm_cpu *cpu)
 {
 	init_ebase(cpu);
 
-	if (init_cp0(cpu) < 0)
-		return -errno;
+	if (init_cp0(cpu) < 0) {
+		pr_err("init_cp0 failed");
+		return -1;
+	}
 
 	if (init_fpu(cpu) < 0) {
-		return -errno;
+		pr_err("init_fpu failed");
+		return -1;
 	}
 
 	return 0;
@@ -610,13 +611,13 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 	// dump_kvm_regs(STDOUT_FILENO, *regs);
 
 	if (kvm__init_guest(cpu) < 0) {
-		pr_err("guest init\n");
-		return -errno;
+		pr_err("kvm__init_guest failed\n");
+		return -1;
 	}
 
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0) {
 		pr_err("KVM_SET_REGS failed");
-		return -errno;
+		return -1;
 	}
 
 	vacate_current_stack(cpu);
@@ -713,10 +714,10 @@ int dune_enter()
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	struct kvm_cpu *cpu = setup_vm_with_one_cpu(0);
 	if (cpu == NULL) {
-		return -errno;
+		return -1;
 	}
 	if (kvm_cpu__start(cpu, &regs)) {
-		return -errno;
+		return -1;
 	}
 	// exit(guest_clone());
 	// exit(guest_fork());
