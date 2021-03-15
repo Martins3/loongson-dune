@@ -10,12 +10,13 @@ DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
 # LDLIBS			+= -lpthread -lrt
 LDLIBS			+= -static
+CC=/usr/local/musl/bin/musl-gcc
 
 all: $(TEST)
 
 %: %.c $(DEPS)
 	$(MAKE) -C ../dune 
-	gcc $(LDLIBS) $< $(LIBDUNE) -o $@
+	$(CC) $(LDLIBS) $< $(LIBDUNE) -o $@
 
 clean:
 	rm -f $(TEST)

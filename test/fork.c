@@ -25,13 +25,13 @@ int main(int argc, char *argv[])
 
 	dune_procmap_dump();
 
-	if (fork()) {
-		printf("this is child\n");
-		exit(1);
-	} else {
-		printf("this is parent\n");
-		exit(1);
-	}
+  if (fork()) {
+    printf("this is child\n");
+    exit(1);
+  } else {
+    printf("this is parent\n");
+    exit(1);
+  }
 	return 0;
 }
 
@@ -90,11 +90,10 @@ void dune_procmap_iterate(dune_procmap_cb cb)
 	char path[256];
 
   printf("heee\n");
-	map = fopen("/home/maritns3/core/4000/dune/test/fork.c", "r");
+	map = fopen("/proc/self/maps", "r");
 	if (map == NULL) {
 		printf("Could not open /proc/self/maps!\n");
 		abort();
-
 	}
   printf("after open\n");
 
