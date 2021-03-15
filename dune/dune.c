@@ -45,14 +45,6 @@ struct kvm {
 	int vm_id; // TODO maybe shmem and memlock
 };
 
-struct thread_info {
-	struct kvm_regs regs;
-	u64 epc;
-	// TODO
-	// simd
-	// fpu
-};
-
 // reference from arch/mips/include/asm/processor.h
 #define FPU_REG_WIDTH 256
 #define NUM_FPU_REGS 32
@@ -68,6 +60,12 @@ struct mips_fpu_struct {
 	unsigned int msacsr;
 };
 
+struct thread_info {
+	struct kvm_regs regs;
+	u64 epc;
+	struct mips_fpu_struct fpu;
+};
+
 // reference : kvmtool/mips/include/kvm/kvm-cpu-arch.h
 struct kvm_cpu {
 	unsigned long cpu_id;
@@ -75,8 +73,9 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
-	long syscall_parameter[7];
+	long syscall_parameter[7]; // TODO 其实现在是没有用处的
 	int debug_fd;
+	struct thread_info info;
 };
 
 struct kvm_cpu *setup_vm_with_one_cpu();
@@ -106,7 +105,7 @@ static void report(const char *prefix, const char *err, va_list params)
 static void error_builtin(const char *err, va_list params)
 {
 	printf("%s", KCYN);
-	report(" Error: ", err, params);
+	report("Error: ", err, params);
 	printf("%s", KNRM);
 }
 
@@ -257,32 +256,30 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	pr_info("ebase address : %llx", (u64)addr);
 }
 
-static int init_ebase_tlb(struct kvm_cpu *cpu)
+static void init_ebase_tlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_TLB_OFFSET, ebase_error_entry_begin,
 	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
-static int init_ebase_xtlb(struct kvm_cpu *cpu)
+static void init_ebase_xtlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
 	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
-	return 0;
 }
 
-static int init_ebase_cache(struct kvm_cpu *cpu)
+static void init_ebase_cache(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_CACHE_OFFSET, ebase_error_entry_begin,
 	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
-static int init_ebase_general(struct kvm_cpu *cpu)
+static void init_ebase_general(struct kvm_cpu *cpu)
 {
 	extern void ebase_general_entry_begin(void);
 	extern void ebase_general_entry_end(void);
 	memcpy(cpu->ebase + EBASE_GE_OFFSET, ebase_general_entry_begin,
 	       ebase_general_entry_end - ebase_general_entry_begin);
-	return 0;
 }
 
 #define CP0_INIT_REG(X)                                                        \
@@ -395,17 +392,33 @@ static int init_cp0(struct kvm_cpu *cpu)
 	return 0;
 }
 
+// TODO 将所有的返回值修改为这种模式
+enum RETURN_TYPE { Err, Ok };
+
+#define isErrMsg(val, msg)                                                     \
+	while (0) {                                                            \
+		if (val == Err) {                                              \
+			pr_err(msg);                                           \
+			return Err;                                            \
+		}                                                              \
+	}
+
+#define isErr(val)                                                             \
+	while (0) {                                                            \
+		if (val == Err) {                                              \
+			return Err;                                            \
+		}                                                              \
+	}
+
 extern void get_fpu_regs(struct mips_fpu_struct *);
 extern void get_fcsr(unsigned int *);
 extern void get_msacsr(unsigned int *);
 
 #define KVM_REG_MIPS_VEC_256(n) (KVM_REG_MIPS_FPR | KVM_REG_SIZE_U256 | (n))
 
-// in arch/mips/include/uapi/asm/kvm.h, definition of `struct fpu` is empty
-static int init_fpu(struct kvm_cpu *cpu)
+int kvm_enable_fpu(struct kvm_cpu *cpu)
 {
 	struct kvm_enable_cap cap;
-	struct kvm_one_reg reg;
 	memset(&cap, 0, sizeof(cap));
 	cap.cap = KVM_CAP_MIPS_FPU;
 
@@ -421,35 +434,92 @@ static int init_fpu(struct kvm_cpu *cpu)
 	}
 
 	// 从 kvm_arch_init_vm 可以看到不需要手动打开 lasx
+	return 0;
+}
+
+enum ACCESS_OP {
+	GET = KVM_GET_ONE_REG,
+	SET = KVM_SET_ONE_REG,
+};
+
+// TODO 忽然感觉 sed reg 还需要 check ret 真的很烦人
+int kvm_access_reg(struct kvm_cpu *cpu, struct kvm_one_reg *reg,
+		   enum ACCESS_OP op)
+{
+	if (ioctl(cpu->vcpu_fd, op, reg) < 0)
+		return -1;
+	return 0;
+}
+
+u64 kvm_access_cp0_reg(struct kvm_cpu *cpu, u64 id, enum ACCESS_OP op,
+		       u64 value)
+{
+	struct kvm_one_reg reg;
+	u64 v = (op == GET) ? 0 : value;
+	reg.addr = (u64) & (v);
+	reg.id = id;
+
+	kvm_access_reg(cpu, &reg, op);
+	return v;
+}
+
+u64 kvm_get_cp0_reg(struct kvm_cpu *cpu, u64 id)
+{
+	return kvm_access_cp0_reg(cpu, id, GET, 0);
+}
+
+u64 kvm_set_cp0_reg(struct kvm_cpu *cpu, u64 id, u64 v)
+{
+	return kvm_access_cp0_reg(cpu, id, SET, v);
+}
+
+// TODO
+// 1. 重新定义一下函数, 如果是从 kvm 中间 get 叫做 kvm_get, 类似的
+// 2. 文件的上半部分全部定义 kvm 开始的 ioctl 封装函数, 下面定义组合内容
+int kvm_access_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs,
+			enum ACCESS_OP op)
+{
+	struct kvm_one_reg reg;
+
+	for (int i = 0; i < NUM_FPU_REGS; ++i) {
+		reg.id = KVM_REG_MIPS_VEC_256(i);
+		reg.addr = (u64) & (fpu_regs->fpr[i]);
+		kvm_access_reg(cpu, &reg, op);
+	}
+
+	reg.id = KVM_REG_MIPS_FCR_CSR;
+	reg.addr = (u64) & (fpu_regs->fcr31);
+	kvm_access_reg(cpu, &reg, op);
+
+	reg.id = KVM_REG_MIPS_MSA_CSR;
+	reg.addr = (u64) & (fpu_regs->msacsr);
+	kvm_access_reg(cpu, &reg, op);
+
+	return 0;
+}
+
+int kvm_get_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs)
+{
+	kvm_access_fpu_regs(cpu, fpu_regs, GET);
+}
+
+int kvm_set_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs)
+{
+	kvm_access_fpu_regs(cpu, fpu_regs, SET);
+}
+
+static int init_fpu(struct kvm_cpu *cpu)
+{
+	if (kvm_enable_fpu(cpu)) {
+		return -1;
+	}
 
 	struct mips_fpu_struct fpu_regs;
 	get_fpu_regs(&fpu_regs);
 	get_fcsr(&fpu_regs.fcr31);
 	get_msacsr(&fpu_regs.msacsr);
 
-	for (int i = 0; i < NUM_FPU_REGS; ++i) {
-		reg.id = KVM_REG_MIPS_VEC_256(i);
-		reg.addr = (u64) & (fpu_regs.fpr[i]);
-		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
-			pr_err("KVM_SET_ONE_REG fpu %d failed", i);
-			return -1;
-		} else {
-			pr_info("KVM_SET_ONE_REG fpu(%d)=%lf", i,
-				*(double *)reg.addr);
-		}
-	}
-
-	reg.id = KVM_REG_MIPS_FCR_CSR;
-	reg.addr = (u64) & (fpu_regs.fcr31);
-	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
-		pr_err("KVM_SET_ONE_REG (fcr csr) failed");
-		return -1;
-	}
-
-	reg.id = KVM_REG_MIPS_MSA_CSR;
-	reg.addr = (u64) & (fpu_regs.msacsr);
-	if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(reg)) < 0) {
-		pr_err("KVM_SET_ONE_REG (msa csr) failed");
+	if (kvm_set_fpu_regs(cpu, &fpu_regs)) {
 		return -1;
 	}
 
@@ -492,7 +562,7 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, int cpu_id)
 	int mmap_size;
 
 	vcpu = kvm_cpu__new(kvm);
-	if (!vcpu)
+	if (vcpu == NULL)
 		return NULL;
 
 	vcpu->cpu_id = cpu_id;
@@ -521,16 +591,6 @@ struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, int cpu_id)
 	}
 
 	return vcpu;
-}
-
-void kvm_cpu__run(struct kvm_cpu *vcpu)
-{
-	int err;
-
-	err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
-	// TODO why only this ioctl check errno with EINTR and EAGAIN
-	if (err < 0 && (errno != EINTR && errno != EAGAIN))
-		die_perror("KVM_RUN");
 }
 
 #undef offsetof
@@ -627,6 +687,7 @@ guest_entry:
 }
 
 // TODO we need a better machanism to deal with cpu_id
+// TODO 1. 添加一个 cpu_id 的取值判断，如果越界的直接杀死
 struct kvm_cpu *setup_vm_with_one_cpu(int cpu_id)
 {
 	char dev_path[] = "/dev/kvm";
@@ -713,12 +774,11 @@ int dune_enter()
 	struct kvm_regs regs;
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
 	struct kvm_cpu *cpu = setup_vm_with_one_cpu(0);
-	if (cpu == NULL) {
+	if (cpu == NULL)
 		return -1;
-	}
-	if (kvm_cpu__start(cpu, &regs)) {
+	if (kvm_cpu__start(cpu, &regs))
 		return -1;
-	}
+
 	// exit(guest_clone());
 	// exit(guest_fork());
 	// exit(guest_syscall());
@@ -777,41 +837,20 @@ struct clone3_args {
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
-void dup_fpu(struct kvm_cpu *child_cpu, struct thread_info *info)
+int dup_fpu(struct kvm_cpu *child_cpu, struct thread_info *info)
 {
-	// TODO
+	if (kvm_enable_fpu(child_cpu)) {
+		return -1;
+	}
+
+	if (kvm_set_fpu_regs(child_cpu, &info->fpu)) {
+		return -1;
+	}
+	return 0;
 }
 
-enum ACCESS_CPU_OP {
-	GET = KVM_GET_ONE_REG,
-	SET = KVM_SET_ONE_REG,
-};
-
-u64 access_one_reg(struct kvm_cpu *cpu, u64 id, enum ACCESS_CPU_OP op,
-		   u64 value)
-{
-	struct cp0_reg cp0_reg;
-	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
-	cp0_reg.reg.id = id;
-	cp0_reg.v = (op == GET) ? 0 : value;
-
-	if (ioctl(cpu->vcpu_fd, op, &(cp0_reg.reg)) < 0)
-		die_perror("KVM_GET_ONE_REG");
-
-	return cp0_reg.v;
-}
-
-u64 get_cpu_one_reg(struct kvm_cpu *cpu, u64 id)
-{
-	return access_one_reg(cpu, id, GET, 0);
-}
-
-u64 set_cpu_one_reg(struct kvm_cpu *cpu, u64 id, u64 v)
-{
-	return access_one_reg(cpu, id, SET, v);
-}
-
-void copy_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
+// TODO do we still need it ?
+void dup_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
 {
 	struct cp0_reg cp0_reg;
 	cp0_reg.reg.addr = (u64) & (cp0_reg.v);
@@ -837,15 +876,16 @@ void set_cp0(struct kvm_cpu *child_cpu, u64 id, u64 value)
 		die_perror("KVM_SET_ONE_REG");
 }
 
-void get_parent_thread_info(struct kvm_cpu *parent_cpu,
-			    struct thread_info *info)
+void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 {
-	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(info->regs)) < 0)
+	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(parent_cpu->info.regs)) <
+	    0)
 		die_perror("KVM_GET_REGS");
 
-	info->epc = get_cpu_one_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
+	parent_cpu->info.epc =
+		kvm_get_cp0_reg(parent_cpu, KVM_REG_MIPS_CP0_EPC);
 
-	// TODO fpu
+	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
 void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *info,
@@ -861,8 +901,10 @@ void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *info,
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &(info->regs)) < 0)
 		die_perror("KVM_SET_REGS");
 
+	// TOOD 处理返回值
 	dup_fpu(child_cpu, info);
 
+	// TODO 这个返回值处理一下
 	if (init_cp0(child_cpu) < 0)
 		return;
 }
@@ -876,13 +918,13 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
 	// FIXME
 	// 1. cpu_id should be accessed excludsively
-	// 2. I don't know how linux kernel use cpu_id, it should lower than something
-	// it's a identifier for ?
+	// 2. I don't know how linux kernel use cpu_id, kvm seems limit maximum number of vcpu to 32
 	struct kvm_cpu *child_cpu =
 		kvm_cpu__init(parent_cpu->kvm, parent_cpu->cpu_id + 1);
-	share_ebase(parent_cpu, child_cpu);
+	if (child_cpu == NULL)
+		return NULL;
 
-	struct thread_info info;
+	share_ebase(parent_cpu, child_cpu);
 
 	u64 child_sp = 0;
 	if (sysno == SYS_CLONE) {
@@ -891,9 +933,10 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die_perror("TODO : support clone3");
 	}
 
-	get_parent_thread_info(parent_cpu, &info);
+	// TODO 这两个函数的返回值处理一下
+	kvm_get_parent_thread_info(parent_cpu);
 
-	init_child_thread_info(child_cpu, &info, child_sp);
+	init_child_thread_info(child_cpu, &parent_cpu->info, child_sp);
 
 	return child_cpu;
 }
@@ -948,23 +991,27 @@ bool is_vm_shared(struct kvm_cpu *parent_cpu, int sysno)
 	die_perror("unexpected sysno");
 }
 
-struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu, struct thread_info *info)
+struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 {
+	// TODO 为什么参数 cpu_id = 1 而不是 0 ?
 	struct kvm_cpu *child_cpu = setup_vm_with_one_cpu(1);
+	if (child_cpu == NULL)
+		return NULL;
+
 	share_ebase(parent_cpu, child_cpu);
 
-	init_child_thread_info(child_cpu, info, 0);
+	init_child_thread_info(child_cpu, &parent_cpu->info, 0);
 	return child_cpu;
 }
 
 struct kvm_cpu *emulate_fork_by_another_vm(struct kvm_cpu *parent_cpu)
 {
-	struct thread_info info;
-	get_parent_thread_info(parent_cpu, &info);
+	kvm_get_parent_thread_info(parent_cpu);
 
 	if (do_syscall6(parent_cpu, true)) {
-		return dup_vm(parent_cpu, &info);
+		return dup_vm(parent_cpu);
 	}
+	// parent return null
 	return NULL;
 }
 
@@ -1054,6 +1101,7 @@ void host_loop(struct kvm_cpu *cpu)
 		}
 
 		if (cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
+			// TODO 将错误的内容枚举一下?
 			pr_err("vcpu_id : %d", cpu->cpu_id);
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
@@ -1065,11 +1113,15 @@ void host_loop(struct kvm_cpu *cpu)
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
 			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
+			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
+			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，
+			// 进行调整 status 和 pc 寄存器。
 			if (child_cpu) {
 				cpu = child_cpu;
 				continue;
 			}
 		} else {
+			// 普通系统调用
 			do_syscall6(cpu, false);
 		}
 
@@ -1086,15 +1138,15 @@ void host_loop(struct kvm_cpu *cpu)
 		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
 		// regs.gpr[2], regs.gpr[7]);
 
-		u64 epc = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_EPC);
+		u64 epc = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_EPC);
 		// dprintf(cpu->fd, "return address %llx\n", epc);
 		// dprintf(cpu->fd, "pc %llx\n", regs.pc);
 		regs.pc = epc + 4;
 		// dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
 
-		u64 status = get_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
+		u64 status = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
 		// dprintf(cpu->debug_fd, "status %llx\n", status);
-		status = set_cpu_one_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
+		status = kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
 					 status & (~STATUS_BIT_EXL));
 		// dprintf(cpu->fd, "new status %llx\n", status);
 
