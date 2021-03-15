@@ -8,17 +8,16 @@ LIBDUNE := $(LIBDIR)/libdune.a
 DEPS_FILES := dune.c exception.S cp0.h
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
-$(info == $(TESTSRCS))
-$(info == $(TEST))
-$(info == $(DEPS))
-
+# LDLIBS			+= -lpthread -lrt
+LDLIBS			+= -static
 
 all: $(TEST)
 
 %: %.c $(DEPS)
 	$(MAKE) -C ../dune 
-	gcc $< $(LIBDUNE) -o $@
+	gcc $(LDLIBS) $< $(LIBDUNE) -o $@
 
 clean:
 	rm -f $(TEST)
+	rm -f *.txt
 	$(MAKE) -C ../dune/ clean

@@ -1102,7 +1102,7 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
 			// TODO 将错误的内容枚举一下?
-			pr_err("vcpu_id : %d", cpu->cpu_id);
+			pr_err("vcpu_id=%d", cpu->cpu_id);
 			die_perror("KVM_EXIT_IS_NOT_HYPERCALL");
 		}
 
@@ -1135,8 +1135,8 @@ void host_loop(struct kvm_cpu *cpu)
 		cpu->kvm_run->hypercall.ret =
 			cpu->syscall_parameter[0]; // loongson kvm
 
-		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
-		// regs.gpr[2], regs.gpr[7]);
+    dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
+    regs.gpr[2], regs.gpr[7]);
 
 		u64 epc = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_EPC);
 		// dprintf(cpu->fd, "return address %llx\n", epc);
@@ -1148,7 +1148,7 @@ void host_loop(struct kvm_cpu *cpu)
 		// dprintf(cpu->debug_fd, "status %llx\n", status);
 		status = kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
 					 status & (~STATUS_BIT_EXL));
-		// dprintf(cpu->fd, "new status %llx\n", status);
+    // dprintf(cpu->debug_fd, "new status %llx\n", status);
 
 		if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 			die_perror("KVM_SET_REGS");
