@@ -17,6 +17,7 @@ int main(int argc, char *argv[])
 	if (dune_enter()) {
 		return 1;
 	}
+  printf("hello\n");
 
 	int flags, opt;
 	mqd_t mqd;
@@ -35,6 +36,7 @@ int main(int argc, char *argv[])
 
 	if (optind + 1 >= argc) {
 		printf("check tlpi page 1075\n");
+    exit(1);
 	}
 
 	mqd = mq_open(argv[optind], flags);

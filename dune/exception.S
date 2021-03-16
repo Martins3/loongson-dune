@@ -8,6 +8,8 @@ ebase_error_entry_end:
 .global ebase_tlb_entry_begin
 .global ebase_tlb_entry_end
 ebase_tlb_entry_begin:
+  li k1, 0
+  mtc0 k1, C0_CAUSE
 
 	mfc0 k0, C0_PAGEGRAIN
 	or k0, (0x1 << 29)
@@ -35,22 +37,33 @@ ebase_tlb_entry_end:
 .global ebase_general_entry_begin
 .global ebase_general_entry_end
 ebase_general_entry_begin:
-mfc0 k1, C0_CAUSE
-dsrl k1, k1, 2
-andi k1, k1, 0x1f
+mfc0 k0, C0_CAUSE
+dsrl k0, k0, 2
+andi k0, k0, 0x1f
+
+move k1, k0
 xor k1, k1, EXCCODE_SYS 
 beq k1, zero, syscall
 nop
 
+move k1, k0
+xor k1, k1, EXCCODE_MOD
+beq k1, zero, ebase_tlb_entry_begin 
+nop
 
-mfc0 k1, C0_CAUSE
-dsrl k1, k1, 2
-andi k1, k1, 0x1f
-# 标记 k0, 让 k1 在 VCPU Registers Dump 中间容易查找
-li k0, 0xff3
+move k1, k0
+xor k1, k1, EXCCODE_TLBL
+beq k1, zero, ebase_tlb_entry_begin 
+nop
+
+move k1, k0
+xor k1, k1, EXCCODE_TLBS
+beq k1, zero, ebase_tlb_entry_begin 
+nop
+
+# 标记 k1, 让 k0 在 VCPU Registers Dump 中间容易查找
+li k1, 0xff3
 INVALID_CODEFLOW_2
-
-# beq k1, k0, ebase_tlb_entry_begin
 
 syscall:
 dmfc0 k0, C0_KSCRATCH1

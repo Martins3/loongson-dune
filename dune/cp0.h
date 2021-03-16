@@ -124,10 +124,10 @@
 #define INIT_VALUE_KSCRATCH5 0
 #define INIT_VALUE_KSCRATCH6 0
 
-#define INVALID_CODEFLOW_1 .word (0x42000028 | (1 << 11))
-#define INVALID_CODEFLOW_2 .word (0x42000028 | (22 << 11))
-#define INVALID_CODEFLOW_3 .word (0x42000028 | (3 << 11))
-#define INVALID_EBASE_POSITION 0x20
+#define INVALID_CODEFLOW_1 .word (0x42000028 | (0x1 << 11))
+#define INVALID_CODEFLOW_2 .word (0x42000028 | (0x22 << 11))
+#define INVALID_CODEFLOW_3 .word (0x42000028 | (0x3 << 11))
+#define INVALID_EBASE_POSITION 0x21
 #define UNIMP_ERROR .word (0x42000028 | (0xf << 11))
 #define HYPERCALL .word 0x42000028
 
