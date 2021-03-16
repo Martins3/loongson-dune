@@ -946,6 +946,7 @@ void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu)
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
+  // parent 原路返回，child 进入到 child_entry 中间
 	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9);
 
 	if (child_pid > 0) {
@@ -1028,15 +1029,18 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		}
 	}
 
-	// TODO I can't test clone3 with 4.19 kernel
-	// TODO It doesn't work, reference how SYS_CLONE works
-	if (sysno == SYS_CLONE3) {
+  else if (sysno == SYS_CLONE3) {
+    die_perror("I can't test clone3 with 4.19 kernel\n");
+	  die_perror("It doesn't work, reference how SYS_CLONE works\n");
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
 			emulate_fork_by_another_vcpu(parent_cpu);
 		}
 	}
+
+  // TODO 不应该返回 NULL
+  return NULL;
 }
 
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
@@ -1141,18 +1145,6 @@ void host_loop(struct kvm_cpu *cpu)
 			die_perror("KVM_SET_REGS");
 	}
 }
-
-/**
- * int main(int argc, char *argv[])
- * {
- * 	if (dune_enter()) {
- * 		pr_err("KVM failed");
- * 	}
- * 
- * 	printf("%s\n", "hello");
- * 	return 12;
- * }
- */
 
 // TODO mabye a special hypercall which help process escape the dune
 void escape()
