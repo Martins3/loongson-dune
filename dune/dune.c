@@ -43,6 +43,8 @@ struct kvm {
 	int sys_fd;
 	int vm_fd;
 	// int vm_id;
+	// 也许添加一个字段来管理所有的 cpu
+	// 在 host 中间使用 mutex ?
 };
 
 // reference from arch/mips/include/asm/processor.h
@@ -78,7 +80,7 @@ struct kvm_cpu {
 	struct thread_info info;
 };
 
-struct kvm_cpu *setup_vm_with_one_cpu();
+struct kvm_cpu *kvm_init_vm_with_one_cpu();
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -445,7 +447,7 @@ enum ACCESS_OP {
 };
 
 // TODO 忽然感觉 sed reg 还需要 check ret 真的很烦人
-int kvm_access_reg(struct kvm_cpu *cpu, struct kvm_one_reg *reg,
+int kvm_access_reg(const struct kvm_cpu *cpu, struct kvm_one_reg *reg,
 		   enum ACCESS_OP op)
 {
 	if (ioctl(cpu->vcpu_fd, op, reg) < 0)
@@ -453,7 +455,7 @@ int kvm_access_reg(struct kvm_cpu *cpu, struct kvm_one_reg *reg,
 	return 0;
 }
 
-u64 kvm_access_cp0_reg(struct kvm_cpu *cpu, u64 id, enum ACCESS_OP op,
+u64 kvm_access_cp0_reg(const struct kvm_cpu *cpu, u64 id, enum ACCESS_OP op,
 		       u64 value)
 {
 	struct kvm_one_reg reg;
@@ -465,12 +467,12 @@ u64 kvm_access_cp0_reg(struct kvm_cpu *cpu, u64 id, enum ACCESS_OP op,
 	return v;
 }
 
-u64 kvm_get_cp0_reg(struct kvm_cpu *cpu, u64 id)
+u64 kvm_get_cp0_reg(const struct kvm_cpu *cpu, u64 id)
 {
 	return kvm_access_cp0_reg(cpu, id, GET, 0);
 }
 
-u64 kvm_set_cp0_reg(struct kvm_cpu *cpu, u64 id, u64 v)
+u64 kvm_set_cp0_reg(const struct kvm_cpu *cpu, u64 id, u64 v)
 {
 	return kvm_access_cp0_reg(cpu, id, SET, v);
 }
@@ -478,7 +480,8 @@ u64 kvm_set_cp0_reg(struct kvm_cpu *cpu, u64 id, u64 v)
 // TODO
 // 1. 重新定义一下函数, 如果是从 kvm 中间 get 叫做 kvm_get, 类似的
 // 2. 文件的上半部分全部定义 kvm 开始的 ioctl 封装函数, 下面定义组合内容
-int kvm_access_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs,
+int kvm_access_fpu_regs(struct kvm_cpu *cpu,
+			const struct mips_fpu_struct *fpu_regs,
 			enum ACCESS_OP op)
 {
 	struct kvm_one_reg reg;
@@ -500,12 +503,14 @@ int kvm_access_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs,
 	return 0;
 }
 
-int kvm_get_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs)
+int kvm_get_fpu_regs(struct kvm_cpu *cpu,
+		     const struct mips_fpu_struct *fpu_regs)
 {
 	kvm_access_fpu_regs(cpu, fpu_regs, GET);
 }
 
-int kvm_set_fpu_regs(struct kvm_cpu *cpu, struct mips_fpu_struct *fpu_regs)
+int kvm_set_fpu_regs(struct kvm_cpu *cpu,
+		     const struct mips_fpu_struct *fpu_regs)
 {
 	kvm_access_fpu_regs(cpu, fpu_regs, SET);
 }
@@ -558,7 +563,7 @@ static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 	return vcpu;
 }
 
-struct kvm_cpu *kvm_cpu__init(struct kvm *kvm, int cpu_id)
+struct kvm_cpu *kvm_init_one_cpu(struct kvm *kvm, int cpu_id)
 {
 	struct kvm_cpu *vcpu;
 	int mmap_size;
@@ -687,14 +692,11 @@ guest_entry:
 	return 0; // 不能去掉，否则 guest_entry 后面没有语句，会报错
 }
 
-// TODO we need a better machanism to deal with cpu_id
-// TODO 1. 添加一个 cpu_id 的取值判断，如果越界的直接杀死
-struct kvm_cpu *setup_vm_with_one_cpu()
+struct kvm_cpu *kvm_init_vm_with_one_cpu()
 {
 	char dev_path[] = "/dev/kvm";
 	int ret;
 	struct kvm *dune;
-	int cpu_id = 0;
 
 	dune = calloc(1, sizeof(dune));
 
@@ -745,7 +747,7 @@ struct kvm_cpu *setup_vm_with_one_cpu()
 		pr_info("KVM_SET_USER_MEMORY_REGION");
 	}
 
-	return kvm_cpu__init(dune, cpu_id);
+	return kvm_init_one_cpu(dune, 0);
 
 err_vm_fd:
 	close(dune->vm_fd);
@@ -773,7 +775,7 @@ int dune_enter()
 {
 	struct kvm_regs regs;
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
-	struct kvm_cpu *cpu = setup_vm_with_one_cpu();
+	struct kvm_cpu *cpu = kvm_init_vm_with_one_cpu();
 	if (cpu == NULL)
 		return -1;
 	if (kvm_cpu__start(cpu, &regs))
@@ -815,13 +817,13 @@ struct clone3_args {
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
-int dup_fpu(struct kvm_cpu *child_cpu, struct thread_info *info)
+int dup_fpu(struct kvm_cpu *child_cpu, const struct mips_fpu_struct *parent_fpu)
 {
 	if (kvm_enable_fpu(child_cpu)) {
 		return -1;
 	}
 
-	if (kvm_set_fpu_regs(child_cpu, &info->fpu)) {
+	if (kvm_set_fpu_regs(child_cpu, parent_fpu)) {
 		return -1;
 	}
 	return 0;
@@ -866,24 +868,28 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
+// TODO 如果 fork 或者 clone 失败，创建的虚拟机和 vcpu 都需要销毁才对
 void init_child_thread_info(struct kvm_cpu *child_cpu,
-			    struct thread_info *parent_thread_info,
+			    const struct thread_info *parent_thread_info,
 			    u64 child_sp)
 {
-	parent_thread_info->regs.gpr[2] = 0;
-	parent_thread_info->regs.gpr[7] = 0;
+	struct kvm_regs child_regs;
+	memcpy(&child_regs, &parent_thread_info->regs, sizeof(struct kvm_regs));
+
+	child_regs.gpr[2] = 0;
+	child_regs.gpr[7] = 0;
 	if (child_sp)
-		parent_thread_info->regs.gpr[29] =
-			child_sp; //  #define sp	$29
+		child_regs.gpr[29] = child_sp; //  #define sp	$29
 
-	parent_thread_info->regs.pc = parent_thread_info->epc + 4;
+	// TODO 如果修改 host_loop 的代码，这里也是需要被修改的
+	child_regs.pc = parent_thread_info->epc + 4;
 
-	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS,
-		  &(parent_thread_info->regs)) < 0)
+	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die_perror("KVM_SET_REGS");
 
 	// TODO 处理返回值
-	if (dup_fpu(child_cpu, parent_thread_info) < 0) {
+  // 唯一引用位置
+	if (dup_fpu(child_cpu, &parent_thread_info->fpu) < 0) {
 		die_perror("dup_fpu\n");
 	}
 
@@ -893,18 +899,18 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	}
 }
 
-void share_ebase(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
+void share_ebase(const struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
 {
 	child_cpu->ebase = parent_cpu->ebase;
 }
 
-struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
+struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	// FIXME
 	// 1. cpu_id should be accessed excludsively
 	// 2. I don't know how linux kernel use cpu_id, kvm seems limit maximum number of vcpu to 32
 	struct kvm_cpu *child_cpu =
-		kvm_cpu__init(parent_cpu->kvm, parent_cpu->cpu_id + 1);
+		kvm_init_one_cpu(parent_cpu->kvm, parent_cpu->cpu_id + 1);
 	if (child_cpu == NULL)
 		return NULL;
 
@@ -956,7 +962,7 @@ struct child_args {
 	struct kvm_cpu *cpu;
 };
 
-bool is_vm_shared(struct kvm_cpu *parent_cpu, int sysno)
+bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	if (sysno == SYS_FORK)
 		return true;
@@ -975,7 +981,7 @@ bool is_vm_shared(struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 {
-	struct kvm_cpu *child_cpu = setup_vm_with_one_cpu();
+	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL)
 		return NULL;
 
@@ -1034,10 +1040,8 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 }
 
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
-// TODO maybe stack is invalid, just segment fault is too stupid
 struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
-	kvm_get_parent_thread_info(parent_cpu);
 	if (is_vm_shared(parent_cpu, sysno))
 		return emulate_fork_by_two_vm(parent_cpu);
 	else
@@ -1092,6 +1096,8 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
+
+	    kvm_get_parent_thread_info(cpu);
 			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
 			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
 			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，

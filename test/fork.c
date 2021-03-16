@@ -31,16 +31,18 @@ int guest_fork()
 	printf("ret : %ld\n", len);
 
 	pid_t pid = fork();
+  double a = 12.0;
 
 	switch (pid) {
 	case -1:
 		printf("fork failed");
 		break;
 	case 0:
-		printf("this is child\n");
+    a = a + 1;
+		printf("this is child %lf\n", a);
 		break;
 	default:
-		printf("this is parent\n");
+		printf("this is parent %lf\n", a);
 		break;
 	}
 	return 0;
