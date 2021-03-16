@@ -14,24 +14,48 @@
 #include <stdbool.h>
 #include <string.h>
 
+#define _GNU_SOURCE
+#include <unistd.h>
+#include <sys/types.h>
+
+#include <sys/syscall.h>
+
 int dune_enter();
 
 void dune_procmap_dump();
+
+int guest_fork()
+{
+	printf("fork you\n");
+	long len = printf("liyawei\n");
+	printf("ret : %ld\n", len);
+
+	pid_t pid = fork();
+
+	switch (pid) {
+	case -1:
+		printf("fork failed");
+		break;
+	case 0:
+		printf("this is child\n");
+		break;
+	default:
+		printf("this is parent\n");
+		break;
+	}
+	return 0;
+}
 int main(int argc, char *argv[])
 {
-  if (dune_enter()) {
-    return 1;
-  }
+	if (dune_enter()) {
+		return 1;
+	}
 
-	dune_procmap_dump();
 
-  if (fork()) {
-    printf("this is child\n");
-    exit(1);
-  } else {
-    printf("this is parent\n");
-    exit(1);
-  }
+  dune_procmap_dump();
+  
+  guest_fork();
+
 	return 0;
 }
 
@@ -89,22 +113,20 @@ void dune_procmap_iterate(dune_procmap_cb cb)
 	char line[512];
 	char path[256];
 
-  printf("heee\n");
+	printf("heee\n");
 	map = fopen("/proc/self/maps", "r");
 	if (map == NULL) {
 		printf("Could not open /proc/self/maps!\n");
 		abort();
 	}
-  printf("after open\n");
+	printf("after open\n");
 
-  fread(line, sizeof(char), 10, map);
+	fread(line, sizeof(char), 10, map);
 
-  printf("after fread\n");
+	printf("after fread\n");
 
 	setvbuf(map, NULL, _IOFBF, 8192);
-  printf("after setvbuf\n");
-
-
+	printf("after setvbuf\n");
 
 	while (!feof(map)) {
 		path[0] = '\0';

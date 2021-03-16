@@ -31,9 +31,6 @@
 using namespace std;
 typedef unsigned long long int u64;
 
-#include "syscall_arch.h"
-#include "cp0.h"
-
 void test_file()
 {
 	int fd;
@@ -80,42 +77,6 @@ long syscall_ret(unsigned long r)
 		return -1;
 	}
 	return r;
-}
-
-void test_syscall()
-{
-	char a[] = "fork you\n";
-
-	__syscall_ret(__syscall6(5001, 100, (long)a, sizeof(a) - 1, 1, 2, 3));
-	__syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) - 1, 1,
-				 2, 3));
-	__syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) - 1, 1,
-				 2, 3));
-	__syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) - 1, 1,
-				 2, 3));
-}
-
-
-void tlb_hi(u64 hi)
-{
-	int pgsize = 14;
-	int shift = 6;
-
-	u64 m = 0x7fffffff;
-	u64 mask = ~m;
-	u64 vpn = (hi & mask) >> (pgsize - shift);
-	printf("%llx\n", vpn);
-	printf("%llx\n", vpn | EntryLo1_1G_OFFSET);
-
-	u64 res = ((vpn >> shift) << pgsize) | (hi & m);
-	printf("%llx\n", res);
-}
-
-int test_TLB_bit(int argc, char *argv[])
-{
-	printf("%x\n", PAGEMASK_1G_MASK | PAGEMASK_1G_MASK_LOW_BITS);
-	tlb_hi(0xfff5f90000);
-	return 0;
 }
 
 void test_neg_16()
@@ -170,5 +131,6 @@ u64 show_bits(const u64 d)
 
 int main(int argc, char *argv[])
 {
+  show_bits(0x740000a0);
 	return 0;
 }

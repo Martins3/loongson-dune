@@ -49,6 +49,6 @@ test/hello_world
 kern/mm.ko
 kern/mm.mod.c
 kern/.tmp_versions/mm.mod
-test/100-0-syscall.txt
+test/*.txt
 test/fork
-test/100-1-syscall.txt
+test/.gdb_history

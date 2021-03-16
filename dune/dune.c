@@ -245,6 +245,7 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	int i;
 	void *addr = mmap_one_page();
 	cpu->ebase = addr;
+  // hypercall instruction used for catching invalid access
 	for (int i = 0; i < PAGESIZE / 4; ++i) {
 		int *x = (int *)addr;
 		x = x + i;
@@ -547,7 +548,7 @@ static struct kvm_cpu *kvm_cpu__new(struct kvm *kvm)
 {
 	struct kvm_cpu *vcpu;
 
-	vcpu = calloc(1, sizeof(*vcpu));
+	vcpu = calloc(1, sizeof(struct kvm_cpu));
 	if (!vcpu)
 		return NULL;
 
@@ -785,28 +786,6 @@ int dune_enter()
 	return 0;
 }
 
-int guest_fork()
-{
-	printf("fork you\n");
-	long len = printf("liyawei\n");
-	printf("ret : %ld\n", len);
-
-	pid_t pid = fork();
-
-	switch (pid) {
-	case -1:
-		printf("fork failed");
-		break;
-	case 0:
-		printf("this is child\n");
-		break;
-	default:
-		printf("this is parent\n");
-		break;
-	}
-	return 0;
-}
-
 /** 
  * copied form : https://github.com/torvalds/linux/blob/master/kernel/fork.c
  *
@@ -888,25 +867,28 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
-void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *info,
+void init_child_thread_info(struct kvm_cpu *child_cpu, struct thread_info *parent_thread_info,
 			    u64 child_sp)
 {
-	info->regs.gpr[2] = 0;
-	info->regs.gpr[7] = 0;
+	parent_thread_info->regs.gpr[2] = 0;
+	parent_thread_info->regs.gpr[7] = 0;
 	if (child_sp)
-		info->regs.gpr[29] = child_sp; //  #define sp	$29
+		parent_thread_info->regs.gpr[29] = child_sp; //  #define sp	$29
 
-	info->regs.pc = info->epc + 4;
+	parent_thread_info->regs.pc = parent_thread_info->epc + 4;
 
-	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &(info->regs)) < 0)
+	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &(parent_thread_info->regs)) < 0)
 		die_perror("KVM_SET_REGS");
 
-	// TOOD 处理返回值
-	dup_fpu(child_cpu, info);
+	// TODO 处理返回值
+	if(dup_fpu(child_cpu, parent_thread_info) < 0){
+    die_perror("dup_fpu\n");
+  }
 
 	// TODO 这个返回值处理一下
-	if (init_cp0(child_cpu) < 0)
-		return;
+	if (init_cp0(child_cpu) < 0){
+    die_perror("init_cp0\n");
+  }
 }
 
 void share_ebase(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
@@ -933,9 +915,7 @@ struct kvm_cpu *dup_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die_perror("TODO : support clone3");
 	}
 
-	// TODO 这两个函数的返回值处理一下
-	kvm_get_parent_thread_info(parent_cpu);
-
+	// TODO 这个函数的返回值处理一下
 	init_child_thread_info(child_cpu, &parent_cpu->info, child_sp);
 
 	return child_cpu;
@@ -994,7 +974,7 @@ bool is_vm_shared(struct kvm_cpu *parent_cpu, int sysno)
 struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 {
 	// TODO 为什么参数 cpu_id = 1 而不是 0 ?
-	struct kvm_cpu *child_cpu = setup_vm_with_one_cpu(1);
+	struct kvm_cpu *child_cpu = setup_vm_with_one_cpu(0);
 	if (child_cpu == NULL)
 		return NULL;
 
@@ -1004,10 +984,8 @@ struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 	return child_cpu;
 }
 
-struct kvm_cpu *emulate_fork_by_another_vm(struct kvm_cpu *parent_cpu)
+struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu)
 {
-	kvm_get_parent_thread_info(parent_cpu);
-
 	if (do_syscall6(parent_cpu, true)) {
 		return dup_vm(parent_cpu);
 	}
@@ -1015,7 +993,7 @@ struct kvm_cpu *emulate_fork_by_another_vm(struct kvm_cpu *parent_cpu)
 	return NULL;
 }
 
-struct kvm_cpu *emulate_fork_share_vm(struct kvm_cpu *parent_cpu, int sysno)
+struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
 	// without CLONE_VM
 	// 1. creating one vcpu is enough
@@ -1058,10 +1036,11 @@ struct kvm_cpu *emulate_fork_share_vm(struct kvm_cpu *parent_cpu, int sysno)
 // TODO maybe stack is invalid, just segment fault is too stupid
 struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
+	kvm_get_parent_thread_info(parent_cpu);
 	if (is_vm_shared(parent_cpu, sysno))
-		return emulate_fork_by_another_vm(parent_cpu);
+		return emulate_fork_by_two_vm(parent_cpu);
 	else
-		return emulate_fork_share_vm(parent_cpu, sysno);
+		return emulate_fork_by_two_vcpu(parent_cpu, sysno);
 }
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
@@ -1135,8 +1114,8 @@ void host_loop(struct kvm_cpu *cpu)
 		cpu->kvm_run->hypercall.ret =
 			cpu->syscall_parameter[0]; // loongson kvm
 
-    dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
-    regs.gpr[2], regs.gpr[7]);
+    // dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
+    // regs.gpr[2], regs.gpr[7]);
 
 		u64 epc = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_EPC);
 		// dprintf(cpu->fd, "return address %llx\n", epc);
@@ -1146,8 +1125,9 @@ void host_loop(struct kvm_cpu *cpu)
 
 		u64 status = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
 		// dprintf(cpu->debug_fd, "status %llx\n", status);
-		status = kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
+		kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
 					 status & (~STATUS_BIT_EXL));
+    kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_CAUSE, 0);
     // dprintf(cpu->debug_fd, "new status %llx\n", status);
 
 		if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
