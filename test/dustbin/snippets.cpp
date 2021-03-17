@@ -34,7 +34,7 @@ typedef unsigned long long int u64;
 void test_file()
 {
 	int fd;
-	char *name = "record_syscall.txt";
+	char name[] = "record_syscall.txt";
 	fd = open(name, O_WRONLY | O_TRUNC | O_CREAT, 0644);
 	if (fd == -1) {
 		perror("open failed");
