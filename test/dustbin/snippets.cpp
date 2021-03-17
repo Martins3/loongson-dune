@@ -131,6 +131,6 @@ u64 show_bits(const u64 d)
 
 int main(int argc, char *argv[])
 {
-  show_bits(0x740000a0);
+	show_bits(0x12);
 	return 0;
 }

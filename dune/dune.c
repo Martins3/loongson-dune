@@ -304,7 +304,7 @@ void ebase_init(struct kvm_cpu *cpu)
 	ebase_init_general(cpu);
 }
 
-void ebase_share(const struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
+void ebase_share(struct kvm_cpu *child_cpu, const struct kvm_cpu *parent_cpu)
 {
 	child_cpu->ebase = parent_cpu->ebase;
 }
@@ -551,8 +551,8 @@ struct kvm_cpu *kvm_init_one_vcpu(struct kvm *kvm, int cpu_id)
 	if (mmap_size < 0)
 		die("KVM_GET_VCPU_MMAP_SIZE");
 
-	vcpu->kvm_run = mmap(NULL, mmap_size, PROT_READ | PROT_WRITE,
-			     MAP_SHARED, vcpu->vcpu_fd, 0);
+	vcpu->kvm_run =
+		mmap(NULL, mmap_size, PROT_RW, MAP_SHARED, vcpu->vcpu_fd, 0);
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
 
@@ -857,6 +857,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	// TODO 如果修改 host_loop 的代码，这里也是需要被修改的
 	child_regs.pc = parent_thread_info->epc + 4;
+  pr_info("child pc = %llx", child_regs.pc);
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die("KVM_SET_REGS");
@@ -883,7 +884,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	if (child_cpu == NULL)
 		return NULL;
 
-	ebase_share(parent_cpu, child_cpu);
+	ebase_share(child_cpu, parent_cpu);
 
 	u64 child_sp = 0;
 	if (sysno == SYS_CLONE) {
@@ -935,10 +936,12 @@ struct child_args {
 bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	if (sysno == SYS_FORK)
-		return true;
+		return false;
 
+	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
+	pr_info("clone flags : %lx", parent_cpu->syscall_parameter[1]);
 	if (sysno == SYS_CLONE)
-		return parent_cpu->syscall_parameter[1] | CLONE_VM;
+		return parent_cpu->syscall_parameter[1] & CLONE_VM;
 
 	if (sysno == SYS_CLONE3) {
 		struct clone3_args *args =
@@ -949,15 +952,15 @@ bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 	die("unexpected sysno");
 }
 
-struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
+// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
+struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu)
 {
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
 		die("dup_vm");
 	}
-	return NULL;
 
-	ebase_share(parent_cpu, child_cpu);
+	ebase_share(child_cpu, parent_cpu);
 
 	init_child_thread_info(child_cpu, &parent_cpu->info, 0);
 	return child_cpu;
@@ -965,6 +968,7 @@ struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 
 struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu)
 {
+	pr_info("dup_vm");
 	if (do_syscall6(parent_cpu, true)) {
 		// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
 		return dup_vm(parent_cpu);
@@ -973,11 +977,13 @@ struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu)
 	return NULL;
 }
 
+// TODO 如果 clone 失败，记得回收这些资源
 struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
 	// without CLONE_VM
 	// 1. creating one vcpu is enough
 	// 2. child host need one stack for `host_loop`
+	pr_info("two vcpu\n");
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu, sysno);
 	if (child_cpu == NULL)
 		die("DUP_VCPU");
@@ -985,7 +991,17 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (sysno == SYS_CLONE) {
 		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
-		// TODO ???
+		/*
+     * |dune child_args |musl funcp/argp|
+     * |----------------|---------------|
+     * ^                ^               ^
+     * +                +               +
+     * host           guest            user
+     * syscall        syscall         syscall
+     * paramerter    paramerter     paramerter
+     *                  ||
+     *               guest sp
+     */
 		child_stack_pointer &= -16; // # aligning stack to double word
 		child_stack_pointer += -16;
 		assert(sizeof(struct child_args) == 16);
@@ -999,8 +1015,8 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	}
 
 	else if (sysno == SYS_CLONE3) {
-		die("I can't test clone3 with 4.19 kernel\n");
-		die("It doesn't work, reference how SYS_CLONE works\n");
+		die("Unable test clone3 with 4.19 kernel\n");
+		die("code below doesn't work, reference how SYS_CLONE works\n");
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
@@ -1016,9 +1032,9 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
 	if (is_vm_shared(parent_cpu, sysno))
-		return emulate_fork_by_two_vm(parent_cpu);
-	else
 		return emulate_fork_by_two_vcpu(parent_cpu, sysno);
+	else
+		return emulate_fork_by_two_vm(parent_cpu);
 }
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
@@ -1058,8 +1074,8 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
 			// TODO 将错误的内容枚举一下?
-			pr_err("vcpu=%d", cpu->cpu_id);
-			die("KVM_EXIT_IS_NOT_HYPERCALL");
+			die("KVM_EXIT_IS_NOT_HYPERCALL vcpu=%d exit_reason=%d",
+			    cpu->cpu_id, cpu->kvm_run->exit_reason);
 		}
 
 		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |

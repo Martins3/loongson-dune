@@ -46,21 +46,6 @@ xor k1, k1, EXCCODE_SYS
 beq k1, zero, syscall
 nop
 
-move k1, k0
-xor k1, k1, EXCCODE_MOD
-beq k1, zero, ebase_tlb_entry_begin 
-nop
-
-move k1, k0
-xor k1, k1, EXCCODE_TLBL
-beq k1, zero, ebase_tlb_entry_begin 
-nop
-
-move k1, k0
-xor k1, k1, EXCCODE_TLBS
-beq k1, zero, ebase_tlb_entry_begin 
-nop
-
 # 标记 k1, 让 k0 在 VCPU Registers Dump 中间容易查找
 li k1, 0xff3
 INVALID_CODEFLOW_2
@@ -98,7 +83,7 @@ switch_stack:
 .global	dune_clone
 .type	dune_clone,@function
 dune_clone:
-	li	$2, 5055
+	li	$2, 5055 # clone
 	syscall
 	beq	$7, $0, 1f
 	nop
@@ -110,13 +95,13 @@ dune_clone:
 	// parent success
 	jr	ra
 	nop
-// child gotos a new function
+  // child gotos a new function
 1:	ld	$25, 0(sp)	# function pointer
 	ld	$4, 8(sp)	# argument pointer
 	jalr	$25		# call the user's function
 	nop
 	move 	$4, $2
-	li	$2, 5058
+	li	$2, 5058 # exit
 	syscall
 
 /*

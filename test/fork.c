@@ -31,14 +31,14 @@ int guest_fork()
 	printf("ret : %ld\n", len);
 
 	pid_t pid = fork();
-  double a = 12.0;
+	double a = 12.0;
 
 	switch (pid) {
 	case -1:
 		printf("fork failed");
 		break;
 	case 0:
-    a = a + 1;
+		a = a + 1;
 		printf("this is child %lf\n", a);
 		break;
 	default:
@@ -53,10 +53,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
+	dune_procmap_dump();
 
-  dune_procmap_dump();
-  
-  guest_fork();
+	guest_fork();
 
 	return 0;
 }
