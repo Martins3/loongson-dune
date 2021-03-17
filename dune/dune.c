@@ -36,9 +36,6 @@ typedef unsigned long long u64;
 // /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
 
-// TODO protect this global variable
-int vm_serial_number = 0;
-
 struct kvm {
 	int sys_fd;
 	int vm_fd;
@@ -75,12 +72,14 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
-	long syscall_parameter[7]; // TODO 其实现在是没有用处的
+	long syscall_parameter[7];
 	int debug_fd;
 	struct thread_info info;
 };
 
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
+
+bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -242,7 +241,7 @@ void *mmap_one_page()
 	return addr;
 }
 
-static void alloc_ebase(struct kvm_cpu *cpu)
+static void ebase_alloc(struct kvm_cpu *cpu)
 {
 	int i;
 	void *addr = mmap_one_page();
@@ -259,25 +258,25 @@ static void alloc_ebase(struct kvm_cpu *cpu)
 	pr_info("ebase address : %llx", (u64)addr);
 }
 
-static void init_ebase_tlb(struct kvm_cpu *cpu)
+static void ebase_init_tlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_TLB_OFFSET, ebase_error_entry_begin,
 	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
-static void init_ebase_xtlb(struct kvm_cpu *cpu)
+static void ebase_init_xtlb(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_XTLB_OFFSET, ebase_tlb_entry_begin,
 	       ebase_tlb_entry_end - ebase_tlb_entry_begin);
 }
 
-static void init_ebase_cache(struct kvm_cpu *cpu)
+static void ebase_init_cache(struct kvm_cpu *cpu)
 {
 	memcpy(cpu->ebase + EBASE_CACHE_OFFSET, ebase_error_entry_begin,
 	       ebase_error_entry_end - ebase_error_entry_begin);
 }
 
-static void init_ebase_general(struct kvm_cpu *cpu)
+static void ebase_init_general(struct kvm_cpu *cpu)
 {
 	extern void ebase_general_entry_begin(void);
 	extern void ebase_general_entry_end(void);
@@ -302,13 +301,18 @@ static inline u64 get_tp()
 	return tp;
 }
 
-void init_ebase(struct kvm_cpu *cpu)
+void ebase_init(struct kvm_cpu *cpu)
 {
-	alloc_ebase(cpu);
-	init_ebase_tlb(cpu);
-	init_ebase_xtlb(cpu);
-	init_ebase_cache(cpu);
-	init_ebase_general(cpu);
+	ebase_alloc(cpu);
+	ebase_init_tlb(cpu);
+	ebase_init_xtlb(cpu);
+	ebase_init_cache(cpu);
+	ebase_init_general(cpu);
+}
+
+void ebase_share(const struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
+{
+	child_cpu->ebase = parent_cpu->ebase;
 }
 
 // TODO 验证一下
@@ -446,7 +450,7 @@ enum ACCESS_OP {
 	SET = KVM_SET_ONE_REG,
 };
 
-// TODO 忽然感觉 sed reg 还需要 check ret 真的很烦人
+// TODO 忽然感觉 set reg 还需要 check ret 真的很烦人
 int kvm_access_reg(const struct kvm_cpu *cpu, struct kvm_one_reg *reg,
 		   enum ACCESS_OP op)
 {
@@ -527,23 +531,6 @@ static int init_fpu(struct kvm_cpu *cpu)
 	get_msacsr(&fpu_regs.msacsr);
 
 	if (kvm_set_fpu_regs(cpu, &fpu_regs)) {
-		return -1;
-	}
-
-	return 0;
-}
-
-static int kvm__init_guest(struct kvm_cpu *cpu)
-{
-	init_ebase(cpu);
-
-	if (init_cp0(cpu) < 0) {
-		pr_err("init_cp0 failed");
-		return -1;
-	}
-
-	if (init_fpu(cpu) < 0) {
-		pr_err("init_fpu failed");
 		return -1;
 	}
 
@@ -676,8 +663,15 @@ int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
 
 	// dump_kvm_regs(STDOUT_FILENO, *regs);
 
-	if (kvm__init_guest(cpu) < 0) {
-		pr_err("kvm__init_guest failed\n");
+	ebase_init(cpu);
+
+	if (init_cp0(cpu) < 0) {
+		pr_err("init_cp0 failed");
+		return -1;
+	}
+
+	if (init_fpu(cpu) < 0) {
+		pr_err("init_fpu failed");
 		return -1;
 	}
 
@@ -815,8 +809,6 @@ struct clone3_args {
 	u64 set_tid_size; /* Number of elements in set_tid */
 };
 
-bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
-
 int dup_fpu(struct kvm_cpu *child_cpu, const struct mips_fpu_struct *parent_fpu)
 {
 	if (kvm_enable_fpu(child_cpu)) {
@@ -888,7 +880,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 		die_perror("KVM_SET_REGS");
 
 	// TODO 处理返回值
-  // 唯一引用位置
+	// 唯一引用位置
 	if (dup_fpu(child_cpu, &parent_thread_info->fpu) < 0) {
 		die_perror("dup_fpu\n");
 	}
@@ -897,11 +889,6 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	if (init_cp0(child_cpu) < 0) {
 		die_perror("init_cp0\n");
 	}
-}
-
-void share_ebase(const struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu)
-{
-	child_cpu->ebase = parent_cpu->ebase;
 }
 
 struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
@@ -914,7 +901,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	if (child_cpu == NULL)
 		return NULL;
 
-	share_ebase(parent_cpu, child_cpu);
+	ebase_share(parent_cpu, child_cpu);
 
 	u64 child_sp = 0;
 	if (sysno == SYS_CLONE) {
@@ -946,7 +933,7 @@ void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu)
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
-  // parent 原路返回，child 进入到 child_entry 中间
+	// parent 原路返回，child 进入到 child_entry 中间
 	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9);
 
 	if (child_pid > 0) {
@@ -986,7 +973,7 @@ struct kvm_cpu *dup_vm(struct kvm_cpu *parent_cpu)
 	if (child_cpu == NULL)
 		return NULL;
 
-	share_ebase(parent_cpu, child_cpu);
+	ebase_share(parent_cpu, child_cpu);
 
 	init_child_thread_info(child_cpu, &parent_cpu->info, 0);
 	return child_cpu;
@@ -1011,7 +998,7 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die_perror("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
-		// TODO move code block to dune_clone as close as possible
+		// TODO move code block to dune_clone as much as possible
 		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
 		child_stack_pointer &= -16; // # aligning stack to double word
 		child_stack_pointer -= 16;
@@ -1029,9 +1016,9 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		}
 	}
 
-  else if (sysno == SYS_CLONE3) {
-    die_perror("I can't test clone3 with 4.19 kernel\n");
-	  die_perror("It doesn't work, reference how SYS_CLONE works\n");
+	else if (sysno == SYS_CLONE3) {
+		die_perror("I can't test clone3 with 4.19 kernel\n");
+		die_perror("It doesn't work, reference how SYS_CLONE works\n");
 		struct clone3_args *args =
 			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
 		if (args->stack != 0) {
@@ -1039,8 +1026,8 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		}
 	}
 
-  // TODO 不应该返回 NULL
-  return NULL;
+	// TODO 不应该返回 NULL
+	return NULL;
 }
 
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
@@ -1100,8 +1087,7 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
-
-	    kvm_get_parent_thread_info(cpu);
+			kvm_get_parent_thread_info(cpu);
 			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
 			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
 			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，
