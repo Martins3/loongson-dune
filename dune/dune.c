@@ -844,27 +844,33 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 
 // TODO 如果 fork 或者 clone 失败，创建的虚拟机和 vcpu 都需要销毁才对
 void init_child_thread_info(struct kvm_cpu *child_cpu,
-			    const struct thread_info *parent_thread_info,
-			    u64 child_sp)
+			    const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_regs child_regs;
-	memcpy(&child_regs, &parent_thread_info->regs, sizeof(struct kvm_regs));
+	ebase_share(child_cpu, parent_cpu);
+
+	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
 
 	child_regs.gpr[2] = 0;
 	child_regs.gpr[7] = 0;
-	if (child_sp)
-		child_regs.gpr[29] = child_sp; //  #define sp	$29
+
+	// #define sp	$29
+	if (sysno == SYS_CLONE) {
+		child_regs.gpr[29] = parent_cpu->syscall_parameter[2];
+	} else if (sysno == SYS_CLONE3) {
+		die("TODO : support clone3");
+	}
 
 	// TODO 如果修改 host_loop 的代码，这里也是需要被修改的
-	child_regs.pc = parent_thread_info->epc + 4;
-  pr_info("child pc = %llx", child_regs.pc);
+	child_regs.pc = parent_cpu->info.epc + 4;
+	pr_info("child pc = %llx", child_regs.pc);
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die("KVM_SET_REGS");
 
 	// TODO 处理返回值
 	// 唯一引用位置
-	if (dup_fpu(child_cpu, &parent_thread_info->fpu) < 0) {
+	if (dup_fpu(child_cpu, &parent_cpu->info.fpu) < 0) {
 		die("dup_fpu\n");
 	}
 
@@ -894,7 +900,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	}
 
 	// TODO 这个函数的返回值处理一下
-	init_child_thread_info(child_cpu, &parent_cpu->info, child_sp);
+	init_child_thread_info(child_cpu, parent_cpu, sysno);
 
 	return child_cpu;
 }
@@ -953,25 +959,23 @@ bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 }
 
 // TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
-struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu)
+struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
 		die("dup_vm");
 	}
 
-	ebase_share(child_cpu, parent_cpu);
-
-	init_child_thread_info(child_cpu, &parent_cpu->info, 0);
+	init_child_thread_info(child_cpu, parent_cpu, sysno);
 	return child_cpu;
 }
 
-struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu)
+struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
 	pr_info("dup_vm");
 	if (do_syscall6(parent_cpu, true)) {
 		// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
-		return dup_vm(parent_cpu);
+		return dup_vm(parent_cpu, sysno);
 	}
 	// parent return null
 	return NULL;
@@ -1034,7 +1038,7 @@ struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 	if (is_vm_shared(parent_cpu, sysno))
 		return emulate_fork_by_two_vcpu(parent_cpu, sysno);
 	else
-		return emulate_fork_by_two_vm(parent_cpu);
+		return emulate_fork_by_two_vm(parent_cpu, sysno);
 }
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)

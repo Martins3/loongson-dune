@@ -76,6 +76,7 @@ int main(int ac, char **av)
 	if (child_stack == NULL) {
 		return 1;
 	}
+  printf("child_stack is %p\n", child_stack);
 
 	ltp_clone(SIGCHLD, do_child, NULL, CHILD_STACK_SIZE, child_stack);
 

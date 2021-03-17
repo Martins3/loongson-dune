@@ -54,3 +54,4 @@ test/fork
 test/.gdb_history
 
 test/clone01
+test/pipe
