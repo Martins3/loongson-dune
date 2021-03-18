@@ -852,7 +852,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	// #define sp	$29
 	if (sysno == SYS_CLONE) {
-    // see linux kernel fork.c:copy_thread
+		// see linux kernel fork.c:copy_thread
 		if (parent_cpu->syscall_parameter[2] != 0)
 			child_regs.gpr[29] = parent_cpu->syscall_parameter[2];
 	} else if (sysno == SYS_CLONE3) {
@@ -1076,6 +1076,10 @@ void host_loop(struct kvm_cpu *cpu)
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN)) {
 			die("KVM_RUN : err=%d\n", err);
+		}
+
+		if (cpu->kvm_run->exit_reason == KVM_EXIT_INTR) {
+			continue;
 		}
 
 		if (cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {

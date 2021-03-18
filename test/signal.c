@@ -11,24 +11,22 @@
 #include <stdio.h>
 #include <signal.h>
 
+#include <sys/mman.h>
+
 #include "../dune/dune.h"
 
 void handle_sigint(int sig)
 {
-  __asm__(".word 0x42000828");
 	printf("Caught signal %d\n", sig);
 }
 
 int main(int argc, char *argv[])
 {
-  DUNE_ENTER;
+	DUNE_ENTER;
 
 	signal(SIGINT, handle_sigint);
 
-	while (true) {
-		sleep(4);
-		printf("sleep\n");
-	}
+	while (true);
 
 	return 0;
 }
