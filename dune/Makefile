@@ -1,4 +1,8 @@
-CFLAGS=-g -DLOONGSON
+CFLAGS := -g -DLOONGSON -static
+# CFLAGS += -pthread
+CC=/usr/local/musl/bin/musl-gcc
+# CFLAGS += -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
+# $(info === $(CFLAGS))
 all: libdune.a
 
 dune.o:dune.c cp0.h
@@ -8,7 +12,7 @@ exception.o:exception.S cp0.h
 	gcc $(CFLAGS) $< -c -o $@
 
 libdune.a: exception.o dune.o
-	ar -rcs $@ $^ 
+	ar -rcs $@ $^
 
 dune.out:
 	echo "oops"

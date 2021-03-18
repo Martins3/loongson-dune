@@ -60,8 +60,8 @@ sd $7, 32(k0)
 sd $8, 40(k0)
 sd $9, 48(k0)
 HYPERCALL
-INVALID_CODEFLOW_3
 ld $2, 0(k0)
+ld $3, 8(k0) # syscall pipe
 ld $7, 32(k0)
 dmfc0 k0, C0_EPC
 daddiu k0, k0, 4

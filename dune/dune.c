@@ -34,7 +34,7 @@ typedef unsigned int u32;
 typedef unsigned long long u64;
 
 // It doesn't matter what KVM_VM_TYPE is, loongson just ignore it, see funtion :
-// /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
+// arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
 
 #define KVM_MAX_VCPUS 16
@@ -52,9 +52,6 @@ struct kvm_vm {
 
 	struct vcpu_pool_ele vcpu_pool[KVM_MAX_VCPUS];
 	pthread_spinlock_t lock;
-	// int vm_id;
-	// 也许添加一个字段来管理所有的 cpu
-	// 在 host 中间使用 mutex ?
 };
 
 // reference from arch/mips/include/asm/processor.h
@@ -720,7 +717,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 	int ret;
 	struct kvm_vm *vm;
 
-	vm = calloc(1, sizeof(vm));
+	vm = calloc(1, sizeof(struct kvm_vm));
 
 	vm->sys_fd = -1;
 	vm->vm_fd = -1;
@@ -866,8 +863,6 @@ void dup_cp0(struct kvm_cpu *parent_cpu, struct kvm_cpu *child_cpu, u64 id)
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die("KVM_GET_ONE_REG");
 
-	printf("guest syscall epc %llx", cp0_reg.v);
-
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_ONE_REG, &(cp0_reg.reg)) < 0)
 		die("KVM_SET_ONE_REG");
 }
@@ -904,8 +899,12 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
 
+	// child always return 0
 	child_regs.gpr[2] = 0;
 	child_regs.gpr[7] = 0;
+
+	// loongson kvm assign gpr[2] with hypercall.ret in in kvm_arch_vcpu_ioctl_run
+	child_cpu->kvm_run->hypercall.ret = child_regs.gpr[2];
 
 	// #define sp	$29
 	if (sysno == SYS_CLONE) {
@@ -916,9 +915,8 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 		die("TODO : support clone3");
 	}
 
-	// TODO 如果修改 host_loop 的代码，这里也是需要被修改的
+	// child start at next instruction of syscall
 	child_regs.pc = parent_cpu->info.epc + 4;
-	pr_info("child pc = %llx", child_regs.pc);
 
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die("KVM_SET_REGS");
@@ -937,21 +935,11 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 {
-	// FIXME
-	// 1. cpu_id should be accessed excludsively
-	// 2. I don't know how linux kernel use cpu_id, kvm seems limit maximum number of vcpu to 32
 	struct kvm_cpu *child_cpu = kvm_alloc_vcpu(parent_cpu->vm);
 	if (child_cpu == NULL)
 		return NULL;
 
 	ebase_share(child_cpu, parent_cpu);
-
-	u64 child_sp = 0;
-	if (sysno == SYS_CLONE) {
-		child_sp = parent_cpu->syscall_parameter[2];
-	} else {
-		die("TODO : support clone3");
-	}
 
 	// TODO 这个函数的返回值处理一下
 	init_child_thread_info(child_cpu, parent_cpu, sysno);
@@ -999,7 +987,6 @@ bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 		return false;
 
 	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
-	pr_info("clone flags : %lx", parent_cpu->syscall_parameter[1]);
 	if (sysno == SYS_CLONE)
 		return parent_cpu->syscall_parameter[1] & CLONE_VM;
 
@@ -1114,8 +1101,6 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
 		return true;
 	}
 
-	// 从 pipe 系统调用看，将 $2 和 $3 都作为了返回值
-
 	cpu->syscall_parameter[0] = r2;
 	cpu->syscall_parameter[4] = r7;
 	return false;
@@ -1148,14 +1133,13 @@ void host_loop(struct kvm_cpu *vcpu)
 
 		// exit_group will destroy the vm, so don't bother to remove vcpu
 		if (sysno == SYS_EXIT) {
-			printf("exit has special entry\n");
 			kvm_free_vcpu(vcpu);
 		}
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
 			kvm_get_parent_thread_info(vcpu);
-			// kvm_dump_regs(STDIN_FILENO, cpu->info.regs);
+
 			struct kvm_cpu *child_cpu = emulate_fork(vcpu, sysno);
 			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
 			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，
@@ -1179,38 +1163,6 @@ void host_loop(struct kvm_cpu *vcpu)
 		} else {
 			do_syscall6(vcpu, false);
 		}
-
-		if (ioctl(vcpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
-			die("vcpu=%d KVM_GET_REGS in host_loop", vcpu->cpu_id);
-
-		// dump_kvm_regs(cpu->debug_fd, regs);
-		regs.gpr[2] = vcpu->syscall_parameter[0];
-		if (sysno == SYS_PIPE) {
-			regs.gpr[3] = vcpu->syscall_parameter[1];
-		}
-		regs.gpr[7] = vcpu->syscall_parameter[4];
-		vcpu->kvm_run->hypercall.ret =
-			vcpu->syscall_parameter[0]; // loongson kvm
-
-		// dump_kvm_regs(cpu->debug_fd, regs);
-		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
-		// regs.gpr[2], regs.gpr[7]);
-
-		u64 epc = kvm_get_cp0_reg(vcpu, KVM_REG_MIPS_CP0_EPC);
-		// dprintf(cpu->fd, "return address %llx\n", epc);
-		// dprintf(cpu->fd, "pc %llx\n", regs.pc);
-		regs.pc = epc + 4;
-		// dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
-
-		u64 status = kvm_get_cp0_reg(vcpu, KVM_REG_MIPS_CP0_STATUS);
-		// dprintf(cpu->debug_fd, "status %llx\n", status);
-		kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_STATUS,
-				status & (~STATUS_BIT_EXL));
-		kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_CAUSE, 0);
-		// dprintf(cpu->debug_fd, "new status %llx\n", status);
-
-		if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
-			die("KVM_SET_REGS");
 	}
 }
 

@@ -9,7 +9,7 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include "syscall_arch.h"
+#include "../dune/dune.h"
 
 static int childFunc(void *arg)
 {
@@ -27,10 +27,6 @@ int guest_clone()
 	int status;
 	pid_t pid = -1;
 	int args;
-
-	char a[] = "fork you\n";
-	__syscall_ret(__syscall6(5001, STDOUT_FILENO, (long)a, sizeof(a) - 1, 1,
-				 2, 3));
 
 	stack = mmap(NULL, STACK_SIZE, PROT_READ | PROT_WRITE,
 		     MAP_PRIVATE | MAP_ANONYMOUS | MAP_STACK, -1, 0);
@@ -82,7 +78,8 @@ int guest_clone()
 	return 0;
 }
 
-// int main(){
-// guest_clone();
-// return 0;
-// }
+int main(){
+  DUNE_ENTER;
+  guest_clone();
+  return 0;
+}
