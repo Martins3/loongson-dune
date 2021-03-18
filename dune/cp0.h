@@ -250,13 +250,14 @@
  * 435 n64	clone3		__sys_clone3 
  * */
 #define MIPS_N64_OFFSET 5000
-#define SYS_CLONE (MIPS_N64_OFFSET + 55)
-#define SYS_FORK (MIPS_N64_OFFSET + 56)
-#define SYS_EXECVE (MIPS_N64_OFFSET + 57)
-#define SYS_EXECLOAD (MIPS_N64_OFFSET + 270)
-#define SYS_EXECAT (MIPS_N64_OFFSET + 316)
-#define SYS_CLONE3 (MIPS_N64_OFFSET + 435)
-#define SYS_PIPE (MIPS_N64_OFFSET + 21)
+#define SYS_PIPE 5021
+#define SYS_CLONE 5055
+#define SYS_FORK 5056
+#define SYS_EXECVE 5057
+#define SYS_EXIT 5058
+#define SYS_EXECLOAD 5270
+#define SYS_EXECAT 5316
+#define SYS_CLONE3 5435
 
 #if __mips_isa_rev >= 6
 #define SYSCALL_CLOBBERLIST \

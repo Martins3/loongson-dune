@@ -11,7 +11,7 @@ DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 # LDLIBS			+= -lpthread -lrt
 # LDLIBS			+= -static -g
 # CC=/usr/local/musl/bin/musl-gcc
-CFLAGS      += -g
+CFLAGS      += -g -pthread
 
 all: $(TEST)
 

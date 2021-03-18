@@ -224,7 +224,7 @@ LEAF(get_msacsr)
 	nop
 END(get_msacsr)
 
-// musl/src/unistd/mips64/pipe.s
+// reference musl/src/unistd/mips64/pipe.s
 .set	noreorder
 .global	host_loop_pipe
 .type	host_loop_pipe,@function

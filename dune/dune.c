@@ -9,17 +9,18 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/types.h>
-#include "cp0.h"
-// #include "syscall_arch.h"
-
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include "cp0.h"
+
+// https://stackoverflow.com/questions/22449342/clone-vm-undeclared-first-use-in-this-function
 #define _GNU_SOURCE
 #ifndef __USE_GNU
 #define __USE_GNU
 #endif
 #include <sched.h>
+#include <pthread.h>
 
 #ifndef LOONGSON
 #include "kvm.h"
@@ -36,9 +37,21 @@ typedef unsigned long long u64;
 // /home/maritns3/core/loongson-dune/cross/arch/mips/kvm/mips.c:kvm_arch_init_vm
 #define KVM_VM_TYPE 1
 
-struct kvm {
+#define KVM_MAX_VCPUS 16
+
+struct kvm_cpu;
+struct vcpu_pool_ele {
+	bool valid;
+	struct kvm_cpu *vcpu;
+};
+
+struct kvm_vm {
 	int sys_fd;
 	int vm_fd;
+	int kvm_run_mmap_size;
+
+	struct vcpu_pool_ele vcpu_pool[KVM_MAX_VCPUS];
+	pthread_spinlock_t lock;
 	// int vm_id;
 	// 也许添加一个字段来管理所有的 cpu
 	// 在 host 中间使用 mutex ?
@@ -67,8 +80,8 @@ struct thread_info {
 
 // reference : kvmtool/mips/include/kvm/kvm-cpu-arch.h
 struct kvm_cpu {
-	unsigned long cpu_id;
-	struct kvm *kvm;
+	int cpu_id;
+	struct kvm_vm *vm;
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
@@ -83,6 +96,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu();
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
 int host_loop_pipe(int pipedes[2]);
+void host_loop_exit();
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -525,39 +539,77 @@ static int init_fpu(struct kvm_cpu *cpu)
 	return 0;
 }
 
-struct kvm_cpu *kvm_init_one_vcpu(struct kvm *kvm, int cpu_id)
+struct kvm_cpu *kvm_free_vcpu(struct kvm_cpu *vcpu)
+{
+	struct kvm_vm *kvm = vcpu->vm;
+
+	if (pthread_spin_lock(&kvm->lock)) {
+		die("locked failed");
+	}
+	assert(kvm->vcpu_pool[vcpu->cpu_id].valid);
+	kvm->vcpu_pool[vcpu->cpu_id].valid = false;
+
+	if (pthread_spin_unlock(&kvm->lock)) {
+		die("unlocked failed");
+	}
+}
+
+struct kvm_cpu *kvm_alloc_vcpu(struct kvm_vm *kvm)
 {
 	struct kvm_cpu *vcpu;
-	int mmap_size;
+	int cpu_id = -1;
+
+	if (pthread_spin_lock(&kvm->lock)) {
+		die("locked failed");
+	}
+
+	for (int i = 0; i < KVM_MAX_VCPUS; ++i) {
+		if (kvm->vcpu_pool[i].valid)
+			continue;
+
+		if (kvm->vcpu_pool[i].vcpu != NULL) {
+			kvm->vcpu_pool[i].valid = true;
+			if (pthread_spin_unlock(&kvm->lock)) {
+				die("unlocked failed");
+			}
+			return kvm->vcpu_pool[i].vcpu;
+		}
+	}
+
+	for (int i = 0; i < KVM_MAX_VCPUS; ++i) {
+		if (kvm->vcpu_pool[i].valid)
+			continue;
+
+		assert(kvm->vcpu_pool[i].vcpu == NULL);
+		kvm->vcpu_pool[i].valid = true;
+		cpu_id = i;
+		break;
+	}
+
+	if (pthread_spin_unlock(&kvm->lock)) {
+		die("unlocked failed");
+	}
+
+	if (cpu_id == -1) {
+		die("No more vcpu to allocate\n");
+	}
 
 	vcpu = calloc(1, sizeof(struct kvm_cpu));
 	if (!vcpu)
 		return NULL;
 
-	vcpu->kvm = kvm;
+	kvm->vcpu_pool[cpu_id].vcpu = vcpu;
+	vcpu->vm = kvm;
 	vcpu->cpu_id = cpu_id;
 
-	vcpu->vcpu_fd = ioctl(vcpu->kvm->vm_fd, KVM_CREATE_VCPU, cpu_id);
+	vcpu->vcpu_fd = ioctl(vcpu->vm->vm_fd, KVM_CREATE_VCPU, vcpu->cpu_id);
 	if (vcpu->vcpu_fd < 0)
 		die("KVM_CREATE_VCPU ioctl");
 
-	mmap_size = ioctl(vcpu->kvm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
-	if (mmap_size < 0)
-		die("KVM_GET_VCPU_MMAP_SIZE");
-
-	vcpu->kvm_run =
-		mmap(NULL, mmap_size, PROT_RW, MAP_SHARED, vcpu->vcpu_fd, 0);
+	vcpu->kvm_run = mmap(NULL, kvm->kvm_run_mmap_size, PROT_RW, MAP_SHARED,
+			     vcpu->vcpu_fd, 0);
 	if (vcpu->kvm_run == MAP_FAILED)
 		die("unable to mmap vcpu fd");
-
-	// char name[40];
-	// memset(name, 0, sizeof(name));
-	// snprintf(name, 40, "%d-%d-syscall.txt", kvm->vm_id, cpu_id);
-	// vcpu->debug_fd = open(name, O_TRUNC | O_WRONLY | O_CREAT, 0644);
-	// if (vcpu->debug_fd == -1) {
-	// perror("open failed");
-	// exit(1);
-	// }
 
 	return vcpu;
 }
@@ -666,24 +718,34 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 {
 	char dev_path[] = "/dev/kvm";
 	int ret;
-	struct kvm *dune;
+	struct kvm_vm *vm;
 
-	dune = calloc(1, sizeof(dune));
+	vm = calloc(1, sizeof(vm));
 
-	dune->sys_fd = -1;
-	dune->vm_fd = -1;
-	// dune->vm_id = 100;
+	vm->sys_fd = -1;
+	vm->vm_fd = -1;
+	vm->kvm_run_mmap_size = -1;
+
+	if (pthread_spin_init(&vm->lock, PTHREAD_PROCESS_PRIVATE) != 0) {
+		pr_err("pthread_spin_init failed\n");
+		goto err;
+	}
+
+	for (int i = 0; i < KVM_MAX_VCPUS; ++i) {
+		vm->vcpu_pool[i].valid = false;
+		vm->vcpu_pool[i].vcpu = NULL;
+	}
 
 	ret = open(dev_path, O_RDWR);
 	if (ret < 0) {
 		pr_err("unable to open %s", dev_path);
 		goto err;
 	} else {
-		dune->sys_fd = ret;
+		vm->sys_fd = ret;
 		pr_info("open %s", dev_path);
 	}
 
-	ret = ioctl(dune->sys_fd, KVM_GET_API_VERSION, 0);
+	ret = ioctl(vm->sys_fd, KVM_GET_API_VERSION, 0);
 	if (ret != KVM_API_VERSION) {
 		pr_err("KVM_GET_API_VERSION");
 		goto err_sys_fd;
@@ -691,14 +753,19 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		pr_info("KVM_GET_API_VERSION");
 	}
 
-	ret = ioctl(dune->sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
+	ret = ioctl(vm->sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
 	if (ret < 0) {
 		pr_err("KVM_CREATE_VM");
 		goto err_sys_fd;
 	} else {
-		dune->vm_fd = ret;
+		vm->vm_fd = ret;
 		pr_info("KVM_CREATE_VM");
 	}
+
+	int mmap_size = ioctl(vm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
+	if (mmap_size < 0)
+		die("KVM_GET_VCPU_MMAP_SIZE");
+	vm->kvm_run_mmap_size = mmap_size;
 
 	struct kvm_userspace_memory_region mem =
 		(struct kvm_userspace_memory_region){
@@ -709,7 +776,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 			.userspace_addr = 0,
 		};
 
-	ret = ioctl(dune->vm_fd, KVM_SET_USER_MEMORY_REGION, &mem);
+	ret = ioctl(vm->vm_fd, KVM_SET_USER_MEMORY_REGION, &mem);
 	if (ret < 0) {
 		pr_err("KVM_SET_USER_MEMORY_REGION");
 		goto err_vm_fd;
@@ -717,28 +784,18 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		pr_info("KVM_SET_USER_MEMORY_REGION");
 	}
 
-	return kvm_init_one_vcpu(dune, 0);
+	return kvm_alloc_vcpu(vm);
 
 err_vm_fd:
-	close(dune->vm_fd);
+	close(vm->vm_fd);
 err_sys_fd:
-	close(dune->vm_fd);
+	close(vm->vm_fd);
 err:
 	pr_err("setup_vm_with_one_cpu");
 	return NULL;
 }
 
-int guest_clone();
-int guest_fork();
-int guest_syscall()
-{
-	for (int i = 0; i < 10; ++i) {
-		printf("a\n");
-	}
-	return 0;
-}
-
-// TODO 关于信号之类，需要从 guest 中间借鉴
+// TODO 关于信号之类，需要从 x86 dune 中间借鉴
 // 而且需要提供两个入口，用于 fork
 // 似乎，当使用上 kvm 的时候，就不用再特意处理 signal 了
 int dune_enter()
@@ -883,8 +940,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	// FIXME
 	// 1. cpu_id should be accessed excludsively
 	// 2. I don't know how linux kernel use cpu_id, kvm seems limit maximum number of vcpu to 32
-	struct kvm_cpu *child_cpu =
-		kvm_init_one_vcpu(parent_cpu->kvm, parent_cpu->cpu_id + 1);
+	struct kvm_cpu *child_cpu = kvm_alloc_vcpu(parent_cpu->vm);
 	if (child_cpu == NULL)
 		return NULL;
 
@@ -970,7 +1026,6 @@ struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
-	pr_info("dup_vm");
 	if (do_syscall6(parent_cpu, true)) {
 		// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
 		return dup_vm(parent_cpu, sysno);
@@ -985,7 +1040,6 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	// without CLONE_VM
 	// 1. creating one vcpu is enough
 	// 2. child host need one stack for `host_loop`
-	pr_info("two vcpu\n");
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu, sysno);
 	if (child_cpu == NULL)
 		die("DUP_VCPU");
@@ -1067,89 +1121,95 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
 	return false;
 }
 
-void host_loop(struct kvm_cpu *cpu)
+void host_loop(struct kvm_cpu *vcpu)
 {
 	while (true) {
-		long err = ioctl(cpu->vcpu_fd, KVM_RUN, 0);
-		long sysno = cpu->syscall_parameter[0];
+		long err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
+		long sysno = vcpu->syscall_parameter[0];
 		struct kvm_regs regs;
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN)) {
 			die("KVM_RUN : err=%d\n", err);
 		}
 
-		if (cpu->kvm_run->exit_reason == KVM_EXIT_INTR) {
+		if (vcpu->kvm_run->exit_reason == KVM_EXIT_INTR) {
 			continue;
 		}
 
-		if (cpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
+		if (vcpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
 			// TODO 将错误的内容枚举一下?
 			die("KVM_EXIT_IS_NOT_HYPERCALL vcpu=%d exit_reason=%d",
-			    cpu->cpu_id, cpu->kvm_run->exit_reason);
+			    vcpu->cpu_id, vcpu->kvm_run->exit_reason);
 		}
 
 		if (sysno == SYS_EXECVE || sysno == SYS_EXECLOAD ||
 		    sysno == SYS_EXECLOAD)
 			die("Unsupported syscall");
 
+		// exit_group will destroy the vm, so don't bother to remove vcpu
+		if (sysno == SYS_EXIT) {
+			printf("exit has special entry\n");
+			kvm_free_vcpu(vcpu);
+		}
+
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
-			kvm_get_parent_thread_info(cpu);
+			kvm_get_parent_thread_info(vcpu);
 			// kvm_dump_regs(STDIN_FILENO, cpu->info.regs);
-			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
+			struct kvm_cpu *child_cpu = emulate_fork(vcpu, sysno);
 			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
 			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，
 			// 进行调整 status 和 pc 寄存器。
 			if (child_cpu) {
-				cpu = child_cpu;
+				vcpu = child_cpu;
 				continue;
 			}
 		} else if (sysno == SYS_PIPE) {
-			int *pipedes = (int *)cpu->syscall_parameter[1];
+			int *pipedes = (int *)vcpu->syscall_parameter[1];
 			int ret = host_loop_pipe(pipedes);
 
 			if (ret != 0) {
-				cpu->syscall_parameter[0] = ret;
-				cpu->syscall_parameter[4] = 1;
+				vcpu->syscall_parameter[0] = ret;
+				vcpu->syscall_parameter[4] = 1;
 			} else {
-				cpu->syscall_parameter[0] = pipedes[0];
-				cpu->syscall_parameter[1] = pipedes[1];
-				cpu->syscall_parameter[4] = 0;
+				vcpu->syscall_parameter[0] = pipedes[0];
+				vcpu->syscall_parameter[1] = pipedes[1];
+				vcpu->syscall_parameter[4] = 0;
 			}
 		} else {
-			do_syscall6(cpu, false);
+			do_syscall6(vcpu, false);
 		}
 
-		if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
-			die("vcpu=%d KVM_GET_REGS in host_loop", cpu->cpu_id);
+		if (ioctl(vcpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
+			die("vcpu=%d KVM_GET_REGS in host_loop", vcpu->cpu_id);
 
 		// dump_kvm_regs(cpu->debug_fd, regs);
-		regs.gpr[2] = cpu->syscall_parameter[0];
+		regs.gpr[2] = vcpu->syscall_parameter[0];
 		if (sysno == SYS_PIPE) {
-			regs.gpr[3] = cpu->syscall_parameter[1];
+			regs.gpr[3] = vcpu->syscall_parameter[1];
 		}
-		regs.gpr[7] = cpu->syscall_parameter[4];
-		cpu->kvm_run->hypercall.ret =
-			cpu->syscall_parameter[0]; // loongson kvm
+		regs.gpr[7] = vcpu->syscall_parameter[4];
+		vcpu->kvm_run->hypercall.ret =
+			vcpu->syscall_parameter[0]; // loongson kvm
 
 		// dump_kvm_regs(cpu->debug_fd, regs);
 		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
 		// regs.gpr[2], regs.gpr[7]);
 
-		u64 epc = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_EPC);
+		u64 epc = kvm_get_cp0_reg(vcpu, KVM_REG_MIPS_CP0_EPC);
 		// dprintf(cpu->fd, "return address %llx\n", epc);
 		// dprintf(cpu->fd, "pc %llx\n", regs.pc);
 		regs.pc = epc + 4;
 		// dprintf(cpu->debug_fd, "new pc %llx\n", regs.pc);
 
-		u64 status = kvm_get_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS);
+		u64 status = kvm_get_cp0_reg(vcpu, KVM_REG_MIPS_CP0_STATUS);
 		// dprintf(cpu->debug_fd, "status %llx\n", status);
-		kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_STATUS,
+		kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_STATUS,
 				status & (~STATUS_BIT_EXL));
-		kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_CAUSE, 0);
+		kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_CAUSE, 0);
 		// dprintf(cpu->debug_fd, "new status %llx\n", status);
 
-		if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
+		if (ioctl(vcpu->vcpu_fd, KVM_SET_REGS, &regs) < 0)
 			die("KVM_SET_REGS");
 	}
 }
