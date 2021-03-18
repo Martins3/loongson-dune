@@ -223,3 +223,20 @@ LEAF(get_msacsr)
 	jr	ra
 	nop
 END(get_msacsr)
+
+// musl/src/unistd/mips64/pipe.s
+.set	noreorder
+.global	host_loop_pipe
+.type	host_loop_pipe,@function
+host_loop_pipe:
+	li	$2, 5021
+	syscall
+	beq	$7, $0, 1f
+	nop
+  jr ra # syscall 返回值 $2，函数的返回值也是 $2，所以直接返回
+  nop
+1:	sw	$2, 0($4)
+	sw	$3, 4($4)
+	move	$2, $0
+	jr	ra
+	nop

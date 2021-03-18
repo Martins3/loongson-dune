@@ -256,6 +256,7 @@
 #define SYS_EXECLOAD (MIPS_N64_OFFSET + 270)
 #define SYS_EXECAT (MIPS_N64_OFFSET + 316)
 #define SYS_CLONE3 (MIPS_N64_OFFSET + 435)
+#define SYS_PIPE (MIPS_N64_OFFSET + 21)
 
 #if __mips_isa_rev >= 6
 #define SYSCALL_CLOBBERLIST \

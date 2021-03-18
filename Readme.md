@@ -1,6 +1,6 @@
 # Process Virtualization
 
-## GVA -> GPA is simpler in MIPS 
+## GVA -> GPA is simple in MIPS 
 firstly, HVA is range is [0, 1<<40]
 ```c
 void test_address_range(){
@@ -40,6 +40,8 @@ Secondly, loonson support 48 bit physical addres[^1]
 [36403.260623] kvm [10252]: TLB ST fault:  cause 0x1080000c, status 0x740000a0, PC: 00000000bc0bbb16, BadVaddr: 0x4000
 [36403.260626] kvm [10252]: Failed to find VMA for hva 0x4000
 ```
+
+2. fd started at 6 instead of 3
 
 ## advantage compared to Standford Dune
 1. we can create kvm virtual machine in dune process

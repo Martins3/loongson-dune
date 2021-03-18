@@ -72,6 +72,7 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	void *ebase;
+	// TODO 修改成为寄存器
 	long syscall_parameter[7];
 	int debug_fd;
 	struct thread_info info;
@@ -80,6 +81,8 @@ struct kvm_cpu {
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
 
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
+
+int host_loop_pipe(int pipedes[2]);
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -1050,6 +1053,7 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
 	register long r8 __asm__("$8") = cpu->syscall_parameter[5];
 	register long r9 __asm__("$9") = cpu->syscall_parameter[6];
 	register long r2 __asm__("$2");
+	register long r3 __asm__("$3");
 
 	__asm__ __volatile__("daddu $2,$0,%2 ; syscall"
 			     : "=&r"(r2), "+r"(r7)
@@ -1061,6 +1065,8 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
 		return true;
 	}
 
+	// 从 pipe 系统调用看，将 $2 和 $3 都作为了返回值
+
 	cpu->syscall_parameter[0] = r2;
 	cpu->syscall_parameter[4] = r7;
 	return false;
@@ -1071,6 +1077,7 @@ void host_loop(struct kvm_cpu *cpu)
 	while (true) {
 		long err = ioctl(cpu->vcpu_fd, KVM_RUN, 0);
 		long sysno = cpu->syscall_parameter[0];
+		struct kvm_regs regs;
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN)) {
 			die("KVM_RUN : err=%d\n", err);
@@ -1082,7 +1089,7 @@ void host_loop(struct kvm_cpu *cpu)
 			    cpu->cpu_id, cpu->kvm_run->exit_reason);
 		}
 
-		if (sysno == SYS_EXECVE | sysno == SYS_EXECLOAD |
+		if (sysno == SYS_EXECVE || sysno == SYS_EXECLOAD ||
 		    sysno == SYS_EXECLOAD)
 			die("Unsupported syscall");
 
@@ -1097,21 +1104,35 @@ void host_loop(struct kvm_cpu *cpu)
 				cpu = child_cpu;
 				continue;
 			}
+		} else if (sysno == SYS_PIPE) {
+			int *pipedes = (int *)cpu->syscall_parameter[1];
+			int ret = host_loop_pipe(pipedes);
+
+			if (ret != 0) {
+				cpu->syscall_parameter[0] = ret;
+				cpu->syscall_parameter[4] = 1;
+			} else {
+				cpu->syscall_parameter[0] = pipedes[0];
+				cpu->syscall_parameter[1] = pipedes[1];
+				cpu->syscall_parameter[4] = 0;
+			}
 		} else {
-			// 普通系统调用
 			do_syscall6(cpu, false);
 		}
 
-		struct kvm_regs regs;
 		if (ioctl(cpu->vcpu_fd, KVM_GET_REGS, &regs) < 0)
 			die("vcpu=%d KVM_GET_REGS in host_loop", cpu->cpu_id);
 
 		// dump_kvm_regs(cpu->debug_fd, regs);
 		regs.gpr[2] = cpu->syscall_parameter[0];
+		if (sysno == SYS_PIPE) {
+			regs.gpr[3] = cpu->syscall_parameter[1];
+		}
 		regs.gpr[7] = cpu->syscall_parameter[4];
 		cpu->kvm_run->hypercall.ret =
 			cpu->syscall_parameter[0]; // loongson kvm
 
+		// dump_kvm_regs(cpu->debug_fd, regs);
 		// dprintf(cpu->debug_fd, "syscall %ld return %lld %lld\n", sysno,
 		// regs.gpr[2], regs.gpr[7]);
 
