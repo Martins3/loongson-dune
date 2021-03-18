@@ -55,3 +55,4 @@ test/.gdb_history
 
 test/clone01
 test/pipe
+test/signal

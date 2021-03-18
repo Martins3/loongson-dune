@@ -26,10 +26,6 @@ void dune_procmap_dump();
 
 int guest_fork()
 {
-	printf("fork you\n");
-	long len = printf("liyawei\n");
-	printf("ret : %ld\n", len);
-
 	pid_t pid = fork();
 	double a = 12.0;
 
@@ -53,7 +49,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	dune_procmap_dump();
+	// dune_procmap_dump();
 
 	guest_fork();
 

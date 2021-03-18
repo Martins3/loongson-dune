@@ -131,7 +131,9 @@ u64 show_bits(const u64 d)
 
 int main(int argc, char *argv[])
 {
-	show_bits(0x12);
+	show_bits(0x1200012);
+  printf("%x\n", 1 << 21);
+  printf("%x\n", 1 << 24);
   printf("%x", 0x42000028 | (0x1 << 11));
 	return 0;
 }

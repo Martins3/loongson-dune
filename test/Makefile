@@ -8,16 +8,16 @@ LIBDUNE := $(LIBDIR)/libdune.a
 DEPS_FILES := dune.c exception.S cp0.h
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
-LDLIBS			+= -lpthread -lrt
-LDLIBS			+= -static -g
-CC=/usr/local/musl/bin/musl-gcc
+# LDLIBS			+= -lpthread -lrt
+# LDLIBS			+= -static -g
+# CC=/usr/local/musl/bin/musl-gcc
 CFLAGS      += -g
 
 all: $(TEST)
 
 %: %.c $(DEPS)
-	$(MAKE) -C ../dune 
-	$(CC) $(CFLAGS) $(LDLIBS) $< $(LIBDUNE) -o $@
+	$(MAKE) -C $(LIBDIR)
+	$(CC) $(CFLAGS) -I$(LIBDIR) $(LDLIBS) $< $(LIBDUNE) -o $@
 
 clean:
 	rm -f $(TEST)

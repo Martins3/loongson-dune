@@ -147,7 +147,7 @@ void die(const char *err, ...)
 	va_end(params);
 }
 
-void dump_kvm_regs(int debug_fd, struct kvm_regs regs)
+void kvm_dump_regs(int debug_fd, struct kvm_regs regs)
 {
 	dprintf(debug_fd, "\n Registers:\n");
 	dprintf(debug_fd, " ----------\n");
@@ -197,15 +197,6 @@ void dump_kvm_regs(int debug_fd, struct kvm_regs regs)
 	dprintf(debug_fd, "pc  : %016llx\n", (unsigned long long)regs.pc);
 
 	dprintf(debug_fd, "\n");
-}
-
-void dune_show_registers(int vcpu_fd, int debug_fd)
-{
-	struct kvm_regs regs;
-
-	if (ioctl(vcpu_fd, KVM_GET_REGS, &regs) < 0)
-		die("KVM_GET_REGS : show_registers");
-	dump_kvm_regs(debug_fd, regs);
 }
 
 struct cp0_reg {
@@ -769,7 +760,9 @@ int dune_enter()
 /** 
  * copied form : https://github.com/torvalds/linux/blob/master/kernel/fork.c
  *
- * SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
+ * SYSCALL_DEFINE5(clone,
+ * unsigned long, clone_flags,
+ * unsigned long, newsp,
  * int __user *, parent_tidptr,
  * int __user *, child_tidptr,
  * unsigned long, tls)
@@ -859,7 +852,9 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	// #define sp	$29
 	if (sysno == SYS_CLONE) {
-		child_regs.gpr[29] = parent_cpu->syscall_parameter[2];
+    // see linux kernel fork.c:copy_thread
+		if (parent_cpu->syscall_parameter[2] != 0)
+			child_regs.gpr[29] = parent_cpu->syscall_parameter[2];
 	} else if (sysno == SYS_CLONE3) {
 		die("TODO : support clone3");
 	}
@@ -1096,6 +1091,7 @@ void host_loop(struct kvm_cpu *cpu)
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
 		    sysno == SYS_CLONE3) {
 			kvm_get_parent_thread_info(cpu);
+			// kvm_dump_regs(STDIN_FILENO, cpu->info.regs);
 			struct kvm_cpu *child_cpu = emulate_fork(cpu, sysno);
 			// 在 guest 态中间，child 的 pc 指向 fork / clone 的下一条指令的位置,
 			// cp0 被初始化为默认状态。 而 parent 需要像完成普通 syscall 一样，
