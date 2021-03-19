@@ -57,3 +57,4 @@ test/clone01
 test/pipe
 test/signal
 test/test_clone
+test/stack

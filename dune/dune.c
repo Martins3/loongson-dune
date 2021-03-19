@@ -792,9 +792,6 @@ err:
 	return NULL;
 }
 
-// TODO 关于信号之类，需要从 x86 dune 中间借鉴
-// 而且需要提供两个入口，用于 fork
-// 似乎，当使用上 kvm 的时候，就不用再特意处理 signal 了
 int dune_enter()
 {
 	struct kvm_regs regs;
