@@ -8,39 +8,15 @@
 #include <unistd.h> // sleep
 #include <assert.h> // assert
 #include <fcntl.h> // open
-#include "../dune/dune.h"
+
+#include <sys/time.h>
+#include <sys/resource.h>
+
+typedef unsigned long long u64;
 
 extern void dune_procmap_dump();
 
-void get_writesize(){
-  printf("get_writesize\n");
-	char read[4096];
-  printf("read : %p\n", read);
-
-  char buf[0x3d000];
-  printf("buf location %p", buf);
-}
-
-int main(int argc, char *argv[]){
-  // DUNE_ENTER;
-
-  dune_procmap_dump();
-
-  sleep(10);
-
-  get_writesize();
-  
-  return 0;
-}
-
-#define PROCMAP_TYPE_UNKNOWN 0x00
-#define PROCMAP_TYPE_FILE 0x01
-#define PROCMAP_TYPE_ANONYMOUS 0x02
-#define PROCMAP_TYPE_HEAP 0x03
-#define PROCMAP_TYPE_STACK 0x04
-#define PROCMAP_TYPE_VSYSCALL 0x05
-#define PROCMAP_TYPE_VDSO 0x06
-#define PROCMAP_TYPE_VVAR 0x07
+#define die(x) printf("%s", x);
 
 struct dune_procmap_entry {
 	unsigned long begin;
@@ -53,6 +29,96 @@ struct dune_procmap_entry {
 	char *path;
 	int type;
 };
+
+void get_writesize()
+{
+	printf("get_writesize\n");
+	char read[4096];
+	printf("read : %p\n", read);
+
+	char buf[0x3d000];
+	printf("buf location %p", buf);
+}
+
+static u64 expand_stack_getrlimit()
+{
+	struct rlimit rlim;
+	if (getrlimit(RLIMIT_STACK, &rlim) == -1)
+		die("get rlimit failed");
+	return rlim.rlim_cur;
+}
+
+static u64 expand_stack_get_stack_top()
+{
+	struct dune_procmap_entry e;
+
+	char line[512];
+	char path[256];
+	unsigned int dev1, dev2, inode;
+	char read, write, execute, private;
+
+	FILE *map = fopen("/proc/self/maps", "r");
+	if (map == NULL)
+		die("Could not open /proc/self/maps!\n");
+
+	if (setvbuf(map, NULL, _IOFBF, 8192))
+		die("setvbuf");
+
+	while (!feof(map)) {
+		path[0] = '\0';
+		if (fgets(line, 512, map) == NULL)
+			break;
+		sscanf((char *)&line, "%lx-%lx %c%c%c%c %lx %x:%x %d %s",
+		       &e.begin, &e.end, &read, &write, &execute, &private,
+		       &e.offset, &dev1, &dev2, &inode, path);
+		if (strncmp(path, "[stack", 6) == 0) {
+			return e.end;
+		}
+	}
+
+	if (fclose(map))
+		die("close file");
+
+	die("stack entry not found in /proc/self/maps");
+  return -1;
+}
+
+
+#include "../dune/dune.h"
+#ifndef DUNE_ENTER
+static void expand_stack()
+{
+	u64 limit = expand_stack_getrlimit();
+	u64 top = expand_stack_get_stack_top();
+	printf("top = %llx, limit = %llx\n", top, limit);
+	*(int *)(top - limit) = 0;
+}
+#else
+void expand_stack();
+#endif
+
+int main(int argc, char *argv[])
+{
+	dune_procmap_dump();
+  DUNE_ENTER;
+  expand_stack();
+
+	dune_procmap_dump();
+
+	get_writesize();
+
+	return 0;
+}
+
+#define PROCMAP_TYPE_UNKNOWN 0x00
+#define PROCMAP_TYPE_FILE 0x01
+#define PROCMAP_TYPE_ANONYMOUS 0x02
+#define PROCMAP_TYPE_HEAP 0x03
+#define PROCMAP_TYPE_STACK 0x04
+#define PROCMAP_TYPE_VSYSCALL 0x05
+#define PROCMAP_TYPE_VDSO 0x06
+#define PROCMAP_TYPE_VVAR 0x07
+
 
 typedef void (*dune_procmap_cb)(const struct dune_procmap_entry *);
 
@@ -87,17 +153,11 @@ void dune_procmap_iterate(dune_procmap_cb cb)
 	char line[512];
 	char path[256];
 
-	printf("heee\n");
 	map = fopen("/proc/self/maps", "r");
 	if (map == NULL) {
 		printf("Could not open /proc/self/maps!\n");
 		abort();
 	}
-	printf("after open\n");
-
-	fread(line, sizeof(char), 10, map);
-
-	printf("after fread\n");
 
 	setvbuf(map, NULL, _IOFBF, 8192);
 	printf("after setvbuf\n");

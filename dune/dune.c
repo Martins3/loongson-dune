@@ -12,6 +12,9 @@
 #include <sys/mman.h>
 #include <sys/ioctl.h>
 
+#include <sys/time.h>
+#include <sys/resource.h>
+
 #include "cp0.h"
 
 // https://stackoverflow.com/questions/22449342/clone-vm-undeclared-first-use-in-this-function
@@ -631,7 +634,7 @@ void vacate_current_stack(struct kvm_cpu *cpu)
 	switch_stack(cpu, (u64)host_stack + PAGESIZE);
 }
 
-int kvm_cpu__start(struct kvm_cpu *cpu, struct kvm_regs *regs)
+int kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
 	asm goto(".set noat\n\t"
 		 ".set noreorder\n\t"
@@ -792,19 +795,81 @@ err:
 	return NULL;
 }
 
+struct dune_procmap_entry {
+	unsigned long begin;
+	unsigned long end;
+	long int offset;
+	bool r; // Readable
+	bool w; // Writable
+	bool x; // Executable
+	bool p; // Private (or shared)
+	char *path;
+	int type;
+};
+
+static u64 expand_stack_getrlimit()
+{
+	struct rlimit rlim;
+	if (getrlimit(RLIMIT_STACK, &rlim) == -1)
+		die("get rlimit failed");
+	return rlim.rlim_cur;
+}
+
+static u64 expand_stack_get_stack_top()
+{
+	struct dune_procmap_entry e;
+
+	char line[512];
+	char path[256];
+	unsigned int dev1, dev2, inode;
+	char read, write, execute, private;
+
+	FILE *map = fopen("/proc/self/maps", "r");
+	if (map == NULL)
+		die("Could not open /proc/self/maps!\n");
+
+	if (setvbuf(map, NULL, _IOFBF, 8192))
+		die("setvbuf");
+
+	while (!feof(map)) {
+		path[0] = '\0';
+		if (fgets(line, 512, map) == NULL)
+			break;
+		sscanf((char *)&line, "%lx-%lx %c%c%c%c %lx %x:%x %d %s",
+		       &e.begin, &e.end, &read, &write, &execute, &private,
+		       &e.offset, &dev1, &dev2, &inode, path);
+		if (strncmp(path, "[stack", 6) == 0) {
+			return e.end;
+		}
+	}
+
+	if (fclose(map))
+		die("close file");
+
+	die("stack entry not found in /proc/self/maps");
+}
+
+void expand_stack()
+{
+	u64 limit = expand_stack_getrlimit();
+	u64 top = expand_stack_get_stack_top();
+	pr_info("top = %llx, limit = %llx", top, limit);
+	*(int *)(top - limit) = 0;
+}
+
 int dune_enter()
 {
 	struct kvm_regs regs;
 	BUILD_ASSERT(272 == offsetof(struct kvm_regs, pc));
+
+	expand_stack();
+
 	struct kvm_cpu *cpu = kvm_init_vm_with_one_cpu();
 	if (cpu == NULL)
 		return -1;
-	if (kvm_cpu__start(cpu, &regs))
+	if (kvm_launch(cpu, &regs))
 		return -1;
 
-	// exit(guest_clone());
-	// exit(guest_fork());
-	// exit(guest_syscall());
 	return 0;
 }
 
