@@ -58,3 +58,5 @@ test/pipe
 test/signal
 test/test_clone
 test/stack
+test/pthread
+test/tst_ofd_locks

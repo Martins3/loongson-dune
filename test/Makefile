@@ -9,10 +9,10 @@ DEPS_FILES := dune.c exception.S cp0.h
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
 # LDLIBS			+= -lpthread -lrt
-LDLIBS			+= -static
+# LDLIBS			+= -static
 CC=/usr/local/musl/bin/musl-gcc
-CFLAGS      += -g -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
-# CFLAGS      += -g -pthread
+# CFLAGS      += -g -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
+CFLAGS      += -g -pthread
 
 all: $(TEST)
 
