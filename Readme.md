@@ -52,4 +52,6 @@ Secondly, loonson support 48 bit physical addres[^1]
 `dune/kvm.h` and `dune/mipskvm.h` is useless, but code editor running on x86 CPU will compliant
 if it can't find the symbol of MIPS KVM.
 
+## design explanation
+
 [^1]: 用芯探核:基于龙芯的 Linux 内核探索解析 P58

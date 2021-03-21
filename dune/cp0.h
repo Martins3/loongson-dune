@@ -258,6 +258,7 @@
 #define SYS_EXECLOAD 5270
 #define SYS_EXECAT 5316
 #define SYS_CLONE3 5435
+#define SYS_SET_THREAD_AREA 5242
 
 #if __mips_isa_rev >= 6
 #define SYSCALL_CLOBBERLIST \

@@ -70,8 +70,8 @@ void *thread_fn_01(void *arg)
 {
 	int i;
 
-	printf("%ld stack = %p\n", (intptr_t)arg, &i);
 	sleep(1);
+	printf("%ld stack = %p\n", (intptr_t)arg, &i);
 	return NULL;
 }
 
@@ -81,8 +81,12 @@ static void test01(void)
 	int k;
 	pthread_t id[thread_cnt];
 	int res[thread_cnt];
+	printf("parent stack %p\n", &k);
 
 	spawn_threads(id, thread_fn_01);
+	for (int i = 0; i < thread_cnt; ++i) {
+		printf("%d %lx\n", i, id[i]);
+	}
 	wait_threads(id);
 	printf("all child returned\n");
 
@@ -92,7 +96,7 @@ static void test01(void)
 #include "../dune/dune.h"
 int main(int argc, char *argv[])
 {
-	// DUNE_ENTER;
+	DUNE_ENTER;
 
 	setup();
 	test01();

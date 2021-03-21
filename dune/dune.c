@@ -52,6 +52,9 @@ struct kvm_vm {
 	int sys_fd;
 	int vm_fd;
 	int kvm_run_mmap_size;
+#ifdef DUNE_DEBUG
+	int debug_fd;
+#endif
 
 	struct vcpu_pool_ele vcpu_pool[KVM_MAX_VCPUS];
 	pthread_spinlock_t lock;
@@ -86,8 +89,7 @@ struct kvm_cpu {
 	struct kvm_run *kvm_run;
 	void *ebase;
 	// TODO 修改成为寄存器
-	long syscall_parameter[7];
-	int debug_fd;
+	u64 syscall_parameter[7];
 	struct thread_info info;
 };
 
@@ -97,6 +99,7 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 
 int host_loop_pipe(int pipedes[2]);
 void host_loop_exit();
+void host_loop(struct kvm_cpu *vcpu);
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -784,6 +787,14 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		pr_info("KVM_SET_USER_MEMORY_REGION");
 	}
 
+#ifdef DUNE_DEBUG
+	vm->debug_fd = open("syscall.txt", O_TRUNC | O_WRONLY | O_CREAT, 0644);
+	if (vm->debug_fd == -1) {
+		perror("open failed");
+		exit(1);
+	}
+#endif
+
 	return kvm_alloc_vcpu(vm);
 
 err_vm_fd:
@@ -1011,23 +1022,19 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 
 typedef void (*CHILD_ENTRY_PTR)(struct kvm_cpu *cpu);
 
-void child_entry(struct kvm_cpu *child_cpu)
-{
-	vacate_current_stack(child_cpu);
-}
-
 extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
 
-void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu)
+void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+				  u64 child_host_stack)
 {
 	u64 r4 = parent_cpu->syscall_parameter[1];
-	u64 r5 = parent_cpu->syscall_parameter[2];
+	// u64 r5 = parent_cpu->syscall_parameter[2];
 	u64 r6 = parent_cpu->syscall_parameter[3];
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = dune_clone(r4, r5, r6, r7, r8, r9);
+	long child_pid = dune_clone(r4, child_host_stack, r6, r7, r8, r9);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;
@@ -1083,6 +1090,12 @@ struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 	return NULL;
 }
 
+void child_entry(struct kvm_cpu *cpu)
+{
+	kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_USERLOCAL, get_tp());
+	host_loop(cpu);
+}
+
 // TODO 如果 clone 失败，记得回收这些资源
 struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
@@ -1095,38 +1108,19 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 
 	if (sysno == SYS_CLONE) {
 		// check musl/src/thread/mips64/clone.s to understand code below
-		u64 child_stack_pointer = parent_cpu->syscall_parameter[2];
-		/*
-     * |dune child_args |musl funcp/argp|
-     * |----------------|---------------|
-     * ^                ^               ^
-     * +                +               +
-     * host           guest            user
-     * syscall        syscall         syscall
-     * paramerter    paramerter     paramerter
-     *                  ||
-     *               guest sp
-     */
-		child_stack_pointer &= -16; // # aligning stack to double word
-		child_stack_pointer += -16;
-		assert(sizeof(struct child_args) == 16);
+		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
+		child_host_stack += -(sizeof(struct child_args));
+		assert(sizeof(struct child_args) == 16); // check dune_clone
 		struct child_args *child_args_on_stack_top =
-			(struct child_args *)(child_stack_pointer);
+			(struct child_args *)(child_host_stack);
 		child_args_on_stack_top->entry = child_entry;
 		child_args_on_stack_top->cpu = child_cpu;
-		parent_cpu->syscall_parameter[2] = child_stack_pointer;
 
-		emulate_fork_by_another_vcpu(parent_cpu);
+		emulate_fork_by_another_vcpu(parent_cpu, child_host_stack);
 	}
 
 	else if (sysno == SYS_CLONE3) {
 		die("Unable test clone3 with 4.19 kernel\n");
-		die("code below doesn't work, reference how SYS_CLONE works\n");
-		struct clone3_args *args =
-			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
-		if (args->stack != 0) {
-			emulate_fork_by_another_vcpu(parent_cpu);
-		}
 	}
 
 	// TODO 通过返回 NULL 告知是 parent, 但是需要使用基本函数告知
@@ -1193,9 +1187,23 @@ void host_loop(struct kvm_cpu *vcpu)
 		    sysno == SYS_EXECLOAD)
 			die("Unsupported syscall");
 
+#ifdef DUNE_DEBUG
+		dprintf(vcpu->vm->debug_fd,
+			"vcpu=%d sysno=%ld:  %llx %llx %llx %llx %llx %llx\n",
+			vcpu->cpu_id, sysno, vcpu->syscall_parameter[1],
+			vcpu->syscall_parameter[2], vcpu->syscall_parameter[3],
+			vcpu->syscall_parameter[4], vcpu->syscall_parameter[5],
+			vcpu->syscall_parameter[6]);
+#endif
+
 		// exit_group will destroy the vm, so don't bother to remove vcpu
 		if (sysno == SYS_EXIT) {
 			kvm_free_vcpu(vcpu);
+		}
+
+		if (sysno == SYS_SET_THREAD_AREA) {
+			kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_USERLOCAL,
+					get_tp());
 		}
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||
