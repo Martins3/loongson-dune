@@ -570,23 +570,16 @@ struct kvm_cpu *kvm_alloc_vcpu(struct kvm_vm *kvm)
 		if (kvm->vcpu_pool[i].valid)
 			continue;
 
+	  kvm->vcpu_pool[i].valid = true;
 		if (kvm->vcpu_pool[i].vcpu != NULL) {
-			kvm->vcpu_pool[i].valid = true;
 			if (pthread_spin_unlock(&kvm->lock)) {
 				die("unlocked failed");
 			}
 			return kvm->vcpu_pool[i].vcpu;
+		} else {
+			cpu_id = i;
+			break;
 		}
-	}
-
-	for (int i = 0; i < KVM_MAX_VCPUS; ++i) {
-		if (kvm->vcpu_pool[i].valid)
-			continue;
-
-		assert(kvm->vcpu_pool[i].vcpu == NULL);
-		kvm->vcpu_pool[i].valid = true;
-		cpu_id = i;
-		break;
 	}
 
 	if (pthread_spin_unlock(&kvm->lock)) {
@@ -1183,8 +1176,7 @@ void host_loop(struct kvm_cpu *vcpu)
 			    vcpu->cpu_id, vcpu->kvm_run->exit_reason);
 		}
 
-		if (sysno == SYS_EXECVE || sysno == SYS_EXECLOAD ||
-		    sysno == SYS_EXECLOAD)
+		if (sysno == SYS_KEXEC_LOAD)
 			die("Unsupported syscall");
 
 #ifdef DUNE_DEBUG

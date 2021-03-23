@@ -8,9 +8,6 @@ ebase_error_entry_end:
 .global ebase_tlb_entry_begin
 .global ebase_tlb_entry_end
 ebase_tlb_entry_begin:
-  li k1, 0
-  mtc0 k1, C0_CAUSE
-
 	mfc0 k0, C0_PAGEGRAIN
 	or k0, (0x1 << 29)
 	mtc0 k0, C0_PAGEGRAIN
