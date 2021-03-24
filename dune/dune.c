@@ -630,7 +630,7 @@ void vacate_current_stack(struct kvm_cpu *cpu)
 	switch_stack(cpu, (u64)host_stack + PAGESIZE);
 }
 
-int kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
+int __attribute__((noinline)) kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
 	asm goto(".set noat\n\t"
 		 ".set noreorder\n\t"
@@ -791,7 +791,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 	return kvm_alloc_vcpu(vm);
 
 err_vm_fd:
-	close(vm->vm_fd);
+	close(vm->sys_fd);
 err_sys_fd:
 	close(vm->vm_fd);
 err:
