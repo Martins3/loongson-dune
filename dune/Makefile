@@ -23,10 +23,6 @@ dune.out:
 	
 	# /usr/local/musl/bin/musl-gcc -I/usr/local/musl/include -static -g -DLOONGSON dune.c test_clone.c exception.S -o dune.out -Wl,-Map=a.map
 
-# ass:
-	# mips64el-loongson-linux-gcc -c hello.c -o hello.o
-	# mips64el-loongson-linux-objdump -d hello.o
-
 gdb: dune.out
 	gdb -x debug.txt dune.out
 
