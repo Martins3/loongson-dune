@@ -1,6 +1,14 @@
 #ifndef ARCH_H_BPXBLEPN
 #define ARCH_H_BPXBLEPN
 
+#include "../aux.h"
+
+#ifndef LOONGSON
+#include "../linux-headers/kvm.h"
+#else
+#include <linux/kvm.h>
+#endif
+
 #define PAGESHIFT 14
 
 // TODO define the syscall no

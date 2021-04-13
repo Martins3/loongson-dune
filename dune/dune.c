@@ -310,6 +310,7 @@ bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 	}
 
 	die("unexpected sysno");
+  return false;
 }
 
 struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)

@@ -5,9 +5,9 @@
 #include <sys/mman.h>
 #include "config.h"
 
-#if ARCH==MIPS
+#if ARCH == MIPS_ARCH
 #include "mips/arch.h"
-#elif ARCH==LOONGARCH
+#elif ARCH == LOONGSON_ARCH
 #include "loongarch/arch.h"
 #else
 #error Unsupported Architecture

@@ -12,9 +12,9 @@
 #include <linux/ioctl.h>
 
 #include "../config.h"
-#if ARCH==MIPS
+#if ARCH == MIPS_ARCH
 #include "../mips/kvm.h"
-#elif ARCH==LOONGARCH
+#elif ARCH==LOONGSON_ARCH
 #include "../loongarch/kvm.h"
 #else
 #error Unsupported Architecture
