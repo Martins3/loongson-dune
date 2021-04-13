@@ -1,3 +1,5 @@
+#ifndef CP0_H_KVX8RQJR
+#define CP0_H_KVX8RQJR
 /* MIPS KVM register ids */
 #define MIPS_CP0_32(_R, _S)                                                    \
 	(KVM_REG_MIPS_CP0 | KVM_REG_SIZE_U32 | (8 * (_R) + (_S)))
@@ -245,3 +247,5 @@
 	"$1", "$3", "$10", "$11", "$12", "$13", \
 	"$14", "$15", "$24", "$25", "hi", "lo", "memory"
 #endif
+
+#endif /* end of include guard: CP0_H_KVX8RQJR */

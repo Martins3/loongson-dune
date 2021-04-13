@@ -1,17 +1,24 @@
 CFLAGS := -g -DLOONGSON -static
-# CFLAGS += -pthread
-CC=/usr/local/musl/bin/musl-gcc
+CFLAGS += -pthread
+
+# CC=/usr/local/musl/bin/musl-gcc
 # CFLAGS += -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 # $(info === $(CFLAGS))
 all: libdune.a
 
-dune.o:dune.c cp0.h
+ARCH=loongarch
+HEADERS=$(ARCH)/arch.h $(ARCH)/internal.h dune.h config.h
+
+$(ARCH)/arch.o: $(ARCH)/arch.c $(HEADERS)
 	gcc $(CFLAGS) $< -c -o $@
 
-exception.o:exception.S cp0.h
+$(ARCH)/entry.o: $(ARCH)/entry.S $(HEADERS)
 	gcc $(CFLAGS) $< -c -o $@
 
-libdune.a: exception.o dune.o
+dune.o:dune.c $(HEADERS)
+	gcc $(CFLAGS) $< -c -o $@
+
+libdune.a: $(ARCH)/arch.o $(ARCH)/entry.o dune.o
 	ar -rcs $@ $^
 
 dune.out:
@@ -27,4 +34,4 @@ gdb: dune.out
 	gdb -x debug.txt dune.out
 
 clean:
-	rm -f libdune.a dune.o exception.o
+	rm -f libdune.a $(ARCH)/dune.o $(ARCH)/entry.o dune.o

@@ -61,3 +61,4 @@ test/stack
 test/pthread
 test/tst_ofd_locks
 notes.md
+example

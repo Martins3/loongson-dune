@@ -11,11 +11,11 @@
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
+#include <stdint.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#include "aux.h"
 #include "interface.h"
 
 // https://stackoverflow.com/questions/22449342/clone-vm-undeclared-first-use-in-this-function
@@ -27,6 +27,70 @@
 #include <pthread.h>
 
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
+
+#define KNRM "\x1B[0m"
+#define KRED "\x1B[31m"
+#define KGRN "\x1B[32m"
+#define KYEL "\x1B[33m"
+#define KBLU "\x1B[34m"
+#define KMAG "\x1B[35m"
+#define KCYN "\x1B[36m"
+#define KWHT "\x1B[37m"
+
+static void report(const char *prefix, const char *err, va_list params)
+{
+	char msg[1024];
+	vsnprintf(msg, sizeof(msg), err, params);
+	fprintf(stdout, " %s%s\n", prefix, msg);
+}
+
+static void error_builtin(const char *err, va_list params)
+{
+	printf("%s", KCYN);
+	report("Error: ", err, params);
+	printf("%s", KNRM);
+}
+
+static void die_builtin(const char *err, va_list params)
+{
+	printf("%s", KRED);
+	report(" Fatal: ", err, params);
+	printf("%s", KNRM);
+	exit(128);
+}
+
+static void info_builtin(const char *info, va_list params)
+{
+	report(" Info: ", info, params);
+}
+
+void pr_warn(const char *err, ...)
+{
+	va_list params;
+
+	va_start(params, err);
+	error_builtin(err, params);
+	va_end(params);
+}
+
+void pr_info(const char *info, ...)
+{
+	va_list params;
+
+	va_start(params, info);
+	info_builtin(info, params);
+	va_end(params);
+}
+
+void die(const char *err, ...)
+{
+	va_list params;
+
+	va_start(params, err);
+	die_builtin(err, params);
+	va_end(params);
+}
+
 
 void kvm_free_vcpu(struct kvm_cpu *vcpu)
 {
@@ -264,8 +328,6 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 }
 
 typedef void (*CHILD_ENTRY_PTR)(struct kvm_cpu *cpu);
-
-extern u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
 
 void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
 				  u64 child_host_stack)

@@ -1,7 +1,8 @@
 #ifndef INTERFACE_H_32DCD7PQ
 #define INTERFACE_H_32DCD7PQ
-#include "aux.h"
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/mman.h>
 #include "config.h"
 
@@ -12,6 +13,28 @@
 #else
 #error Unsupported Architecture
 #endif
+
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+typedef unsigned long long u64;
+
+void pr_warn(const char *err, ...);
+void pr_info(const char *info, ...);
+void die(const char *err, ...);
+
+#undef offsetof
+#ifdef __compiler_offsetof
+#define offsetof(TYPE, MEMBER) __compiler_offsetof(TYPE, MEMBER)
+#else
+#define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
+#endif
+
+#define BUILD_ASSERT(cond)                                                     \
+	do {                                                                   \
+		(void)sizeof(char[1 - 2 * !(cond)]);                           \
+	} while (0)
+
 
 struct kvm_cpu;
 struct vcpu_pool_ele {
@@ -42,18 +65,6 @@ struct kvm_cpu {
   // architecture specified vm state
 	struct thread_info info;
 };
-
-#undef offsetof
-#ifdef __compiler_offsetof
-#define offsetof(TYPE, MEMBER) __compiler_offsetof(TYPE, MEMBER)
-#else
-#define offsetof(TYPE, MEMBER) ((size_t) & ((TYPE *)0)->MEMBER)
-#endif
-
-#define BUILD_ASSERT(cond)                                                     \
-	do {                                                                   \
-		(void)sizeof(char[1 - 2 * !(cond)]);                           \
-	} while (0)
 
 #define PROT_RWX (PROT_READ | PROT_WRITE | PROT_EXEC)
 #define PROT_RW (PROT_READ | PROT_WRITE)
@@ -101,21 +112,16 @@ struct clone3_args {
 };
 
 void arch_dune_enter(struct kvm_cpu *cpu);
-
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack);
 bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
 void child_entry(struct kvm_cpu *cpu);
-
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu);
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno);
-
 void arch_handle_tls(struct kvm_cpu *vcpu);
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno);
-
-// TODO mabye a special hypercall which help process escape the dune
-void escape();
-
+u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
+void escape(); // TODO
 /**
  * History:        #0
  * Commit:         e08b96371625aaa84cb03f51acc4c8e0be27403a

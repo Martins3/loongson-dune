@@ -5,16 +5,21 @@ LIBDIR := ../dune
 
 LIBDUNE := $(LIBDIR)/libdune.a
 
-DEPS_FILES := dune.c exception.S cp0.h
+ARCH=loongarch
+
+DEPS_FILES := config.h dune.h dune.c $(ARCH)/arch.c $(ARCH)/entry.S $(ARCH)/internal.h 
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 
 # LDLIBS			+= -lpthread -lrt
 # LDLIBS			+= -static
-CC=/usr/local/musl/bin/musl-gcc
+# CC=/usr/local/musl/bin/musl-gcc
 # CFLAGS      += -g -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 CFLAGS      += -g -pthread
 
-all: $(TEST)
+$(info $(DEPS) )
+$(info $(TEST) )
+
+all:$(TEST)
 
 %: %.c $(DEPS)
 	$(MAKE) -C $(LIBDIR)

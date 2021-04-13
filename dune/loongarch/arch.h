@@ -1,8 +1,6 @@
 #ifndef ARCH_H_BPXBLEPN
 #define ARCH_H_BPXBLEPN
 
-#include "../aux.h"
-
 #ifndef LOONGSON
 #include "../linux-headers/kvm.h"
 #else
@@ -11,9 +9,12 @@
 
 #define PAGESHIFT 14
 
-// TODO define the syscall no
 struct thread_info {
-  // nothing
+	struct kvm_regs regs;
+	// struct mips_fpu_struct fpu;
+
+	// u64 epc;
+	// void *ebase;
 };
 
 #define KVM_MAX_VCPUS 16

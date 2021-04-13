@@ -1,8 +1,6 @@
 #ifndef ARCH_H_IXTSIDHV
 #define ARCH_H_IXTSIDHV
 
-#include "../aux.h"
-
 #ifndef LOONGSON
 #include "../linux-headers/kvm.h"
 #else
