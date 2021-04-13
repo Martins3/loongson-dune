@@ -294,40 +294,40 @@ struct loongarch_gipiState {
 
 struct kvm_loongarch_ls3a_extirq_state {
 	union ext_en_r {
-		uint64_t reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
-		uint32_t reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
+		__u64 reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
+		__u32 reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
+		__u8 reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
 	} ext_en_r;
 	union bounce_r {
-		uint64_t reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
-		uint32_t reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
+		__u64 reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
+		__u32 reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
+		__u8 reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
 	} bounce_r;
 	union ext_isr_r {
-		uint64_t reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
-		uint32_t reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
+		__u64 reg_u64[KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
+		__u32 reg_u32[KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
+		__u8 reg_u8[KVM_EXTIOI_IRQS_BITMAP_SIZE];
 	} ext_isr_r;
 	union ext_core_isr_r {
-		uint64_t reg_u64[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
-		uint32_t reg_u32[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE];
+		__u64 reg_u64[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE / 8];
+		__u32 reg_u32[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE / 4];
+		__u8 reg_u8[KVM_MAX_CORES][KVM_EXTIOI_IRQS_BITMAP_SIZE];
 	} ext_core_isr_r;
 	union ip_map_r {
-		uint64_t reg_u64;
-		uint32_t reg_u32[KVM_EXTIOI_IRQS_IPMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_EXTIOI_IRQS_IPMAP_SIZE];
+		__u64 reg_u64;
+		__u32 reg_u32[KVM_EXTIOI_IRQS_IPMAP_SIZE / 4];
+		__u8 reg_u8[KVM_EXTIOI_IRQS_IPMAP_SIZE];
 	} ip_map_r;
 	union core_map_r {
-		uint64_t reg_u64[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE / 8];
-		uint32_t reg_u32[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE / 4];
-		uint8_t reg_u8[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE];
+		__u64 reg_u64[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE / 8];
+		__u32 reg_u32[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE / 4];
+		__u8 reg_u8[KVM_LS3A_NODES][KVM_EXTIOI_IRQS_COREMAP_SIZE];
 	} core_map_r;
 	union node_type_r {
-		uint64_t reg_u64[KVM_EXTIOI_IRQS_NODETYPE_SIZE / 4];
-		uint32_t reg_u32[KVM_EXTIOI_IRQS_NODETYPE_SIZE / 2];
-		uint16_t reg_u16[KVM_EXTIOI_IRQS_NODETYPE_SIZE];
-		uint8_t reg_u8[KVM_EXTIOI_IRQS_NODETYPE_SIZE * 2];
+		__u64 reg_u64[KVM_EXTIOI_IRQS_NODETYPE_SIZE / 4];
+		__u32 reg_u32[KVM_EXTIOI_IRQS_NODETYPE_SIZE / 2];
+		__u16 reg_u16[KVM_EXTIOI_IRQS_NODETYPE_SIZE];
+		__u8 reg_u8[KVM_EXTIOI_IRQS_NODETYPE_SIZE * 2];
 	} node_type_r;
 };
 
