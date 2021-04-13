@@ -3,9 +3,15 @@
 #include "aux.h"
 #include <stdbool.h>
 #include <sys/mman.h>
+#include "config.h"
 
-// TODO 变成 <arch.h> 就可以了
+#if ARCH==MIPS
 #include "mips/arch.h"
+#elif ARCH==LOONGARCH
+#include "loongarch/arch.h"
+#else
+#error Unsupported Architecture
+#endif
 
 struct kvm_cpu;
 struct vcpu_pool_ele {

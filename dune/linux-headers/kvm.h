@@ -10,7 +10,15 @@
 
 #include <linux/types.h>
 #include <linux/ioctl.h>
-#include "mipskvm.h"
+
+#include "../config.h"
+#if ARCH==MIPS
+#include "../mips/kvm.h"
+#elif ARCH==LOONGARCH
+#include "../loongarch/kvm.h"
+#else
+#error Unsupported Architecture
+#endif
 
 #define KVM_API_VERSION 12
 

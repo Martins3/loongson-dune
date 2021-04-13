@@ -7,7 +7,8 @@
 #include "../aux.h"
 #include "../interface.h"
 
-void kvm_dump_regs(int debug_fd, struct kvm_regs regs)
+// TODO 变成统一的接口, 移除 kvm_regs
+void arch_dump_regs(int debug_fd, struct kvm_regs regs)
 {
 	dprintf(debug_fd, "\n Registers:\n");
 	dprintf(debug_fd, " ----------\n");

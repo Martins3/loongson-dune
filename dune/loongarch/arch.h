@@ -1,33 +1,29 @@
 #ifndef ARCH_H_BPXBLEPN
 #define ARCH_H_BPXBLEPN
 
-// TODO define the syscall no
+#define PAGESHIFT 14
 
+// TODO define the syscall no
 struct thread_info {
   // nothing
 };
 
-// TODO
-#define KVM_MAX_VCPUS 10000
-#define PAGESIZE (1 << 100)
+#define KVM_MAX_VCPUS 16
+#define PAGESIZE (1 << PAGESHIFT)
 
 /**
- * copied from https://github.com/torvalds/linux/arch/mips/kernel/syscalls/syscall_n64.tbl
- * 55	n64	clone				__sys_clone
- * 56	n64	fork				__sys_fork
- * 57	n64	execve			sys_execve
- * 270 n64	kexec_load			sys_kexec_load
- * 316 n64	execveat			sys_execveat
- * 435 n64	clone3		__sys_clone3 
- * */
-#define SYS_PIPE 5021
-#define SYS_CLONE 5055
-#define SYS_FORK 5056
-#define SYS_EXECVE 5057
-#define SYS_EXIT 5058
-#define SYS_KEXEC_LOAD 5270
-#define SYS_EXECVEAT 5316
-#define SYS_CLONE3 5435
-#define SYS_SET_THREAD_AREA 5242
+ * copied from https://github.com/torvalds/linux/tree/master/include/uapi/asm-generic/unistd.h
+ */
+#define __NR_clone 220
+#define __NR_exit 93
+#define __NR_kexec_load 104
+#define __NR_set_tid_address 96
 
+#define SYS_CLONE __NR_clone
+#define SYS_EXIT __NR_exit
+#define SYS_KEXEC_LOAD __NR_kexec_load
+#define SYS_SET_THREAD_AREA __NR_set_tid_address
+
+#define SYS_CLONE3 0x3f3f3f3f
+#define SYS_FORK 0x3f3f3f3f
 #endif /* end of include guard: ARCH_H_BPXBLEPN */
