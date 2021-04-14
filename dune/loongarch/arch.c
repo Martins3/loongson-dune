@@ -3,7 +3,9 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <sys/ioctl.h>
+#include <unistd.h>
 #include "arch.h"
+#include "internal.h"
 #include "../interface.h"
 
 void arch_dump_regs(int debug_fd, struct kvm_regs regs)
@@ -56,6 +58,63 @@ void arch_dump_regs(int debug_fd, struct kvm_regs regs)
 	dprintf(debug_fd, "\n");
 }
 
+static void init_ebase(struct kvm_cpu *cpu)
+{
+	// 6.2.1
+	// CSR.TLBRENTRY
+	// CSR.MERRENTRY
+	// CSR.EENTRY
+	//
+	// 可以利用 save 寄存器是曾经的 scratch 寄存器
+	//
+	// 直接映射窗口
+	//
+	// 中断信号被采样到 CSR.ESTA.IS 和 CSR.ECFG.LIE, 得到 13 bit 的中断向量
+	//
+	// - [ ] CS.ECFG.VS 是什么东西
+  //
+  // - [ ] 例外前模式信息，包括中断吗? 为什么以前不需要保存? 如果嵌套例外，比如 syscall 中间调用 syscall，那么怎么搞
+  //
+  // - [ ] 
+}
+
+struct csr_reg {
+	struct kvm_one_reg reg;
+	char name[100];
+	u64 v;
+};
+
+#define CSR_INIT_REG(X)                                                        \
+	{                                                                      \
+		.reg = { .id = KVM_CSR_##X }, .name = #X, .v = INIT_VALUE_##X  \
+	}
+
+static const u64 DIRECT_MAP_BASE = 0x9800000000000000;
+static void init_csr(struct kvm_cpu *cpu)
+{
+	if (!cpu->info.ebase)
+		die("You forget to init ebase");
+
+	u64 gg = KVM_CSR_CRMD;
+	struct csr_reg one_regs[] = {
+		CSR_INIT_REG(CRMD),
+	};
+
+	for (int i = 0; i < sizeof(one_regs) / sizeof(struct csr_reg); ++i) {
+		one_regs[i].reg.addr = (u64) & (one_regs[i].v);
+	}
+
+	for (int i = 0; i < sizeof(one_regs) / sizeof(struct csr_reg); ++i) {
+		if (ioctl(cpu->vcpu_fd, KVM_SET_ONE_REG, &(one_regs[i].reg)) <
+		    0) {
+			die("KVM_SET_ONE_REG %s", one_regs[i].name);
+		} else {
+			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
+			// one_regs[i].v);
+		}
+	}
+}
+
 static int __attribute__((noinline))
 kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs, u64 is_guest)
 {
@@ -102,17 +161,18 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs, u64 is_guest)
 		 : "memory"
 		 : guest_entry);
 
-	// dump_kvm_regs(STDOUT_FILENO, *regs);
+	regs->pc -= 4; // let guest jump guest_entry directly
+	arch_dump_regs(STDOUT_FILENO, *regs);
 
-	// ebase_init(cpu);
-	// init_cp0(cpu);
+	init_ebase(cpu);
+	init_csr(cpu);
 	// init_fpu(cpu);
 
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0) {
 		die("KVM_SET_REGS failed");
 	}
 
-	// vacate_current_stack(cpu);
+	// TODO vacate_current_stack(cpu);
 	die("host never reach here\n");
 guest_entry:
 	// return expression is needed by guest_entry, otherwise gcc inline asm would
@@ -129,6 +189,7 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 {
+	// 解决 wip 的问题
 	die("unimp");
 }
 
@@ -139,6 +200,7 @@ bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
 }
 void child_entry(struct kvm_cpu *cpu)
 {
+	// easy
 	die("unimp");
 }
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
@@ -152,10 +214,12 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 }
 void arch_handle_tls(struct kvm_cpu *vcpu)
 {
+	// easy
 	die("unimp");
 }
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)
 {
+	// should be zero
 	die("unimp");
 	return false;
 }
@@ -164,7 +228,9 @@ void escape()
 	die("unimp");
 }
 
-u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9){
-  die("unimp");
-  return 0;
+u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9)
+{
+	die("unimp");
+	// reference the glibc
+	return 0;
 }

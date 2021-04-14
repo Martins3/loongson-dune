@@ -12,6 +12,11 @@
 #define NUM_FPU_REGS 32
 #define PAGESHIFT 14
 
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+typedef unsigned long long u64;
+
 union fpureg {
 	u32 val32[FPU_REG_WIDTH / 32];
 	u64 val64[FPU_REG_WIDTH / 64];

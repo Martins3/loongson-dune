@@ -3,8 +3,7 @@
 #include <stdio.h>
 #include <sys/ioctl.h>
 #include "arch.h"
-#include "cp0.h"
-#include "../aux.h"
+#include "internal.h"
 #include "../interface.h"
 
 // TODO 变成统一的接口, 移除 kvm_regs

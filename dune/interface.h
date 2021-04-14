@@ -14,10 +14,6 @@
 #error Unsupported Architecture
 #endif
 
-typedef unsigned char u8;
-typedef unsigned short u16;
-typedef unsigned int u32;
-typedef unsigned long long u64;
 
 void pr_warn(const char *err, ...);
 void pr_info(const char *info, ...);

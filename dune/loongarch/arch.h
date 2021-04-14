@@ -8,13 +8,17 @@
 #endif
 
 #define PAGESHIFT 14
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+typedef unsigned long long u64;
 
 struct thread_info {
 	struct kvm_regs regs;
 	// struct mips_fpu_struct fpu;
 
-	// u64 epc;
-	// void *ebase;
+  u64 era;
+  void *ebase;
 };
 
 #define KVM_MAX_VCPUS 16

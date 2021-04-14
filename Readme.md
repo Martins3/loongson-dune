@@ -1,34 +1,15 @@
 # Process Virtualization
 
-## GVA -> GPA is simple in MIPS 
-firstly, HVA is range is [0, 1<<40]
-```c
-void test_address_range(){
-	if(access_ok(VERIFY_WRITE, 0, ((unsigned long long)1 << 40) - 1)){
-    pr_debug("YES, we can\n");
-  }else{
-    pr_debug("No, we can't\n");
-  }
-}
-```
+## Project Status
+- MIPS arch finished and pass all the Linux Test Suite syscall tests. 😀
+- Loongarch is under construction. 🚧
+- X86 may be supported soon. 📅
 
-```c
-void test_virtual_address(){
-	struct task_struct *g;
-	rcu_read_lock();
-	for_each_process (g) { 
-    if(g->mm)
-      pr_debug("%s ---> %lx %lx\n", g->comm, g->mm->mmap_base, g->mm->start_stack);
-    else 
-      pr_debug("%s doesn't have mm\n", g->comm);
-	}
-	rcu_read_unlock();
-}
-```
-Secondly, loonson support 48 bit physical addres[^1]
+You have a Loonson 3A4000 Computer, you can checkout to `mips-finished` tag and play with the code.
 
-## Semantic difference
+Any question, issue and email are welcome.
 
+## Semantic different with native execution
 1. segment fault
 ```c
   int * a= (int *)0x4000;
@@ -42,16 +23,17 @@ Secondly, loonson support 48 bit physical addres[^1]
 ```
 
 2. fd started at 6 instead of 3
+4. `KVM_MAX_VCPU` limits the dune threads up to 16
 
-## advantage compared to Standford Dune
-1. we can create kvm virtual machine in dune process
-2. No need to write code for intel and amd CPU separately
-
-## Source code explanation
-1. code is writen in x86 machine and compiled and executed in CPU,
-`dune/kvm.h` and `dune/mipskvm.h` is useless, but code editor running on x86 CPU will compliant
-if it can't find the symbol of MIPS KVM.
+## advantage over Standford Dune
+1. Don't need kernel module.
+2. Don't need to write code for intel and amd CPU separately.
+3. Don't need to disable kernel kaslr.
+4. Escape dune easily.
+   - Process can enter dune and then escape dune whenever it wants to.
+5. Nested Dune
+6. Support multiple architectures.
+7. Support fork related syscall, multi-thread program works almost perfectly.
 
 ## design explanation
-
-[^1]: 用芯探核:基于龙芯的 Linux 内核探索解析 P58
+When guest invoke syscall, it will be directed to hyerpcall and escape to host, then the syscall simulated in host userspace.

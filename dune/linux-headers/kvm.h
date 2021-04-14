@@ -196,9 +196,11 @@ struct kvm_hyperv_exit {
 #define KVM_EXIT_HYPERV_SYNIC          1
 #define KVM_EXIT_HYPERV_HCALL          2
 	__u32 type;
+	__u32 pad1;
 	union {
 		struct {
 			__u32 msr;
+			__u32 pad2;
 			__u64 control;
 			__u64 evt_page;
 			__u64 msg_page;
@@ -656,6 +658,16 @@ struct kvm_mips_vcpu_state {
 	__u64 core_ext_ioisr[4];
  };
 
+struct kvm_loongarch_vcpu_state {
+	__u8 online_vcpus;
+	__u8 is_migrate;
+	__u32 cpu_freq;
+	__u32 count_ctl;
+	__u64 pending_exceptions;
+	__u64 pending_exceptions_clr;
+	__u64 core_ext_ioisr[4];
+ };
+
 /* for KVM_SET_GUEST_DEBUG */
 
 #define KVM_GUESTDBG_ENABLE		0x00000001
@@ -761,9 +773,15 @@ struct kvm_ppc_resize_hpt {
 #define KVM_VM_PPC_HV 1
 #define KVM_VM_PPC_PR 2
 
-/* on MIPS, 0 forces trap & emulate, 1 forces VZ ASE */
-#define KVM_VM_MIPS_TE		0
+/* on MIPS, 0 indicates auto, 1 forces VZ ASE, 2 forces trap & emulate */
+#define KVM_VM_MIPS_AUTO	0
 #define KVM_VM_MIPS_VZ		1
+#define KVM_VM_MIPS_TE		2
+
+/* on Loongarch, 0 indicates auto, 1 forces VZ ASE, 2 forces trap & emulate */
+#define KVM_VM_LOONGARCH_AUTO	0
+#define KVM_VM_LOONGARCH_VZ		1
+#define KVM_VM_LOONGARCH_TE		2
 
 #define KVM_S390_SIE_PAGE_OFFSET 1
 
@@ -970,6 +988,9 @@ struct kvm_ppc_resize_hpt {
 #define KVM_CAP_NESTED_STATE 157
 #define KVM_CAP_ARM_INJECT_SERROR_ESR 158
 #define KVM_CAP_MSR_PLATFORM_INFO 159
+#define KVM_CAP_LOONGARCH_FPU 165
+#define KVM_CAP_LOONGARCH_LSX 166
+#define KVM_CAP_LOONGARCH_VZ 167
 
 #ifdef KVM_CAP_IRQ_ROUTING
 
@@ -1116,6 +1137,7 @@ struct kvm_dirty_tlb {
 #define KVM_REG_S390		0x5000000000000000ULL
 #define KVM_REG_ARM64		0x6000000000000000ULL
 #define KVM_REG_MIPS		0x7000000000000000ULL
+#define KVM_REG_LOONGARCH	0x8000000000000000ULL
 
 #define KVM_REG_SIZE_SHIFT	52
 #define KVM_REG_SIZE_MASK	0x00f0000000000000ULL
@@ -1400,7 +1422,6 @@ struct kvm_s390_ucas_mapping {
 #define KVM_MIPS_GET_VCPU_STATE   _IOR(KVMIO,   0xb9, struct kvm_mips_vcpu_state)
 #define KVM_MIPS_SET_VCPU_STATE   _IOW(KVMIO,   0xba, struct kvm_mips_vcpu_state)
 #define KVM_MIPS_GET_CPUCFG	 _IOR(KVMIO,   0xbb, struct kvm_cpucfg)
-
 /* Available with KVM_CAP_S390_CMMA_MIGRATION */
 #define KVM_S390_GET_CMMA_BITS      _IOWR(KVMIO, 0xb8, struct kvm_s390_cmma_log)
 #define KVM_S390_SET_CMMA_BITS      _IOW(KVMIO, 0xb9, struct kvm_s390_cmma_log)
@@ -1421,6 +1442,10 @@ struct kvm_enc_region {
 /* Available with KVM_CAP_NESTED_STATE */
 #define KVM_GET_NESTED_STATE         _IOWR(KVMIO, 0xbe, struct kvm_nested_state)
 #define KVM_SET_NESTED_STATE         _IOW(KVMIO,  0xbf, struct kvm_nested_state)
+
+#define KVM_LOONGARCH_GET_VCPU_STATE    _IOR(KVMIO,   0xc0, struct kvm_loongarch_vcpu_state)
+#define KVM_LOONGARCH_SET_VCPU_STATE    _IOW(KVMIO,   0xc1, struct kvm_loongarch_vcpu_state)
+#define KVM_LOONGARCH_GET_CPUCFG        _IOR(KVMIO,   0xc2, struct kvm_cpucfg)
 
 /* Secure Encrypted Virtualization command */
 enum sev_cmd_id {
@@ -1571,5 +1596,8 @@ struct kvm_hyperv_eventfd {
 
 #define KVM_HYPERV_CONN_ID_MASK		0x00ffffff
 #define KVM_HYPERV_EVENTFD_DEASSIGN	(1 << 0)
+
+#endif /* __LINUX_KVM_H */
+
 
 #endif /* __LINUX_KVM_H */
