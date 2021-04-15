@@ -27,6 +27,7 @@ test/test_sandbox
 test/timetest
 tags
 .ccls-cache
+.ccls
 .cache
 compile_commands.json
 Module.symvers

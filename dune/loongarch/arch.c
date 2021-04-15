@@ -89,11 +89,14 @@ struct csr_reg {
 		.reg = { .id = KVM_CSR_##X }, .name = #X, .v = INIT_VALUE_##X  \
 	}
 
+// TODO 验证这个数值
 static const u64 DIRECT_MAP_BASE = 0x9800000000000000;
 static void init_csr(struct kvm_cpu *cpu)
 {
 	if (!cpu->info.ebase)
 		die("You forget to init ebase");
+  
+  u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + DIRECT_MAP_BASE;
 
 	u64 gg = KVM_CSR_CRMD;
 	struct csr_reg one_regs[] = {

@@ -226,6 +226,7 @@
 // TODO guest 可以直接访问 cpuid 吗?
 #define INIT_VALUE_CPUID 0x0
 
+// TODO 其实我一直都是非常的怀疑到底是否可以 SET 这些 config
 // TODO 什么叫做 Timer 的有效位数 ?
 #define INIT_VALUE_PRCFG1 0x72f8
 // TLB 支持的页大小 [12, 29]
@@ -233,5 +234,23 @@
 // TLB 的物理参数
 #define INIT_VALUE_PRCFG3 0x8073f2
 
+// TODO 低半地址空间和高半地址空间，为什么需要创建出来两个来 ?
 
+// TODO 为什么需要保存 exception 之前的状态 和 返回地址
+// TODO 为什么 TLB refill exception 需要单独保存 和 返回地址
+// TODO TLBRERA / TLBRPRMD 按道理来说都是只读信息才对啊
+
+// TODO section 5.3 直接映射 和 访问类型还是存在关系的 !
+
+// TODO 关于各种调试寄存器之类的，还是需要小心的处理一下啊!
+//
+// 内核的疑惑:
+// TODO 1. 按道理，应该是存在 K0 和 K1 这种寄存器
+
+// TODO
+// - [ ] 之前都是没有区分 STLB 和 MTLB 的，为什么可以正常工作的啊?
+// - [ ] pagemask 的实现靠什么东西啊?
+
+
+#define INIT_VALUE_STLBPS 0xE
 #endif /* end of include guard: INTERNAL_H_6IUWCEFP */
