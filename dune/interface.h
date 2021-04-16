@@ -109,7 +109,7 @@ struct clone3_args {
 
 void arch_dune_enter(struct kvm_cpu *cpu);
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack);
-bool do_syscall6(struct kvm_cpu *cpu, bool is_fork);
+bool do_syscall(struct kvm_cpu *cpu, bool is_fork);
 void child_entry(struct kvm_cpu *cpu);
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu);
 void init_child_thread_info(struct kvm_cpu *child_cpu,

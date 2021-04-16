@@ -421,7 +421,7 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 	kvm_launch(cpu, &regs);
 }
 
-bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
+bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
 	register long r4 __asm__("$4") = cpu->syscall_parameter[1];
 	register long r5 __asm__("$5") = cpu->syscall_parameter[2];

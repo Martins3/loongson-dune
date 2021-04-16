@@ -388,7 +388,7 @@ struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
-	if (do_syscall6(parent_cpu, true)) {
+	if (do_syscall(parent_cpu, true)) {
 		// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
 		return dup_vm(parent_cpu, sysno);
 	}
@@ -496,6 +496,6 @@ void host_loop(struct kvm_cpu *vcpu)
 		if (arch_handle_special_syscall(vcpu, sysno))
 			continue;
 
-		do_syscall6(vcpu, false);
+		do_syscall(vcpu, false);
 	}
 }

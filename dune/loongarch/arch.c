@@ -72,10 +72,10 @@ static void init_ebase(struct kvm_cpu *cpu)
 	// 中断信号被采样到 CSR.ESTA.IS 和 CSR.ECFG.LIE, 得到 13 bit 的中断向量
 	//
 	// - [ ] CS.ECFG.VS 是什么东西
-  //
-  // - [ ] 例外前模式信息，包括中断吗? 为什么以前不需要保存? 如果嵌套例外，比如 syscall 中间调用 syscall，那么怎么搞
-  //
-  // - [ ] 
+	//
+	// - [ ] 例外前模式信息，包括中断吗? 为什么以前不需要保存? 如果嵌套例外，比如 syscall 中间调用 syscall，那么怎么搞
+	//
+	// - [ ]
 }
 
 struct csr_reg {
@@ -95,8 +95,8 @@ static void init_csr(struct kvm_cpu *cpu)
 {
 	if (!cpu->info.ebase)
 		die("You forget to init ebase");
-  
-  u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + DIRECT_MAP_BASE;
+
+	u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + DIRECT_MAP_BASE;
 
 	u64 gg = KVM_CSR_CRMD;
 	struct csr_reg one_regs[] = {
@@ -196,7 +196,60 @@ void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 	die("unimp");
 }
 
-bool do_syscall6(struct kvm_cpu *cpu, bool is_fork)
+// TODO test the code below
+/**
+#define INTERNAL_SYSCALL_NCS(number, err, nr, args...)                         \
+	internal_syscall##nr(number, err, args)
+
+#define internal_syscall7(number, err, arg0, arg1, arg2, arg3, arg4, arg5,     \
+			  arg6)                                                \
+	({                                                                     \
+		long int _sys_result;                                          \
+                                                                               \
+		{                                                              \
+			register long int __a7 asm("$a7") = number;            \
+			register long int __a0 asm("$a0") = (long int)(arg0);  \
+			register long int __a1 asm("$a1") = (long int)(arg1);  \
+			register long int __a2 asm("$a2") = (long int)(arg2);  \
+			register long int __a3 asm("$a3") = (long int)(arg3);  \
+			register long int __a4 asm("$a4") = (long int)(arg4);  \
+			register long int __a5 asm("$a5") = (long int)(arg5);  \
+			register long int __a6 asm("$a6") = (long int)(arg6);  \
+			__asm__ volatile("syscall	0\n\t"                       \
+					 : "+r"(__a0)                          \
+					 : "r"(__a7), "r"(__a1), "r"(__a2),    \
+					   "r"(__a3), "r"(__a4), "r"(__a5),    \
+					   "r"(__a6)                           \
+					 : __SYSCALL_CLOBBERS);                \
+			_sys_result = __a0;                                    \
+		}                                                              \
+		_sys_result;                                                   \
+	})
+
+#define __SYSCALL_CLOBBERS                                                     \
+	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
+
+# define INTERNAL_SYSCALL_ERROR_P(val, err) \
+	((unsigned long int) (val) > -4096UL)
+
+long int syscall(long int syscall_number, long int arg1, long int arg2,
+		 long int arg3, long int arg4, long int arg5, long int arg6,
+		 long int arg7)
+{
+	long int ret;
+	INTERNAL_SYSCALL_DECL(err);
+
+	ret = INTERNAL_SYSCALL_NCS(syscall_number, err, 7, arg1, arg2, arg3,
+				   arg4, arg5, arg6, arg7);
+
+	if (INTERNAL_SYSCALL_ERROR_P(ret, err))
+		return __syscall_error(ret);
+
+	return ret;
+}
+*/
+
+bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
 	die("unimp");
 	return false;
