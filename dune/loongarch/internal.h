@@ -236,10 +236,11 @@
 
 // 低半地址空间和高半地址空间, 是 page walk 之类的事情了
 
-// TODO 为什么需要保存 exception 之前的状态 和 返回地址
-// TODO 为什么 TLB refill exception 需要单独保存 和 返回地址
-// TODO TLBRERA / TLBRPRMD 按道理来说都是只读信息才对啊
-// - [ ] 那些 TLB refill 在需要处理这些，那么，请问，走普通入口的需要这些吗 ?
+// - [x] 为什么需要保存 exception 之前的状态 和 返回地址
+// - [x] 为什么 TLB refill exception 需要单独保存 和 返回地址
+// - [x] TLBRERA / TLBRPRMD 按道理来说都是只读信息才对啊
+// - [x] 那些 TLB refill 在需要处理这些，那么，请问，走普通入口的需要这些吗 ?
+// 从目前看，只是将这些信息产生了，TODO 关于 PRMD 如何设置的事情，可以在 exception 里面 hyerpcall 验证进入 exception 会自动设置。
 
 // section 5.3 直接映射 和 访问类型还是存在关系的 !
 // 当 MMU 处于直接翻译模式的时候，所有的指令都是按照 CRMD 决定的
@@ -256,11 +257,7 @@
 
 
 // TODO 关于各种调试寄存器之类的，还是需要小心的处理一下啊!
-//
 
-// TODO
-// 4.2.4.1 的 TLB 的索引规则
-//
 // - [x] 之前都是没有区分 STLB 和 MTLB 的，为什么可以正常工作的啊?
 //  - 因为填写的首先指定了大小, 然后可以自动忽视 STLB
 // - [x] pagemask 的实现靠什么东西啊?
@@ -280,9 +277,8 @@
 // TLB refill 被特殊照顾
 // 出错地址信息在 TLBRBADV 上
 
-// TODO
-// - [ ] 为什么需要设计成为两种 TLB 啊
-
+// - [x] 为什么需要设计成为两种 TLB 啊(历史原因)
+//
 // 内核的疑惑:
 // TODO 1. 按道理，应该是存在 K0 和 K1 这种寄存器, check kvm entry 相关的代码
 // 2. TLS 相关的寄存器在哪里 ?
@@ -302,10 +298,32 @@
 // ( size = (64 + 14) * vec_size;)
 // 因为自身的中断号 + 14 啊
 // 分配空间其实按照页对齐可以了，因为只是占据 512 byte 的
+// 
+//
+// TLB refill 的处理办法:
+// 1. 使用了 TLBSAVE 寄存器, 首位保存，所以没有 k0 和 k1 寄存器
+// 2. 完全没有在乎 TLBRPRMD 之类的操作
+// - [x] 为什么最后是 TLBWR 而不是 TLBFILL
+// 这个指令是从 MIPS 时代就存在的，MIPS tlbwr 就是根据 random 寄存器填写的, 但是现在 TLBWR 是根据 index 来的
+// TODO 这个地方显然是存在问题的，咨询，查找内核，阅读文档，或者写点测试
+// - [x] 为什么 lddir 只是进行了两次 : 因为实际上，根本不需要支持 5 级 page walk
+//
+// level 1: PT
+// level 2: Dir1
+// level 3: Dir2
+// level 4: Dir3
+// 
+// PGDL 和 PGDH : 提供给 GPD 的两个地址
+//
+// PWCL 和 PWCH : 描述 pagewalk 的地址，虚拟地址用于在各个级别进行所以的位宽和开始范围
+//
+// badvaddr 从哪里找，取决于是否是 TLB refill exception 的
+// PGD 的取值取决于是否出错的地址
 //
 // 分析 syscall 的处理方式
-// 
-// TODO la.abs 这种指令是从哪里找到的
+// - traps.c:trap_init 中间初始化
+// - genex.S:handle_sys_wrap
+// - 在 arch/loongarch/kernel/scall64-64.S 定义 syscall 的处理, 和常规函数感觉其实没有什么区别
 //
 // NESTED(handle_sys_wrap, 0, sp) // TODO 看来又需要拷贝一下 NESTED 的定义
 // 	la.abs	t0, handle_sys

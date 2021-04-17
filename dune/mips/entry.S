@@ -15,13 +15,13 @@ ebase_tlb_entry_begin:
 	li k0, PAGEMASK_1G_MASK
 	dmtc0 k0, C0_PAGEMASK
 
-	ori k0, PAGEMASK_1G_MASK_LOW_BITS
+	ori k0, PAGEMASK_1G_MASK_LOW_BITS # k0 = 0x7fffffff
 	nor k0, k0, zero
 	dmfc0 k1, C0_BADVADDR
-	and k1, k0, k1
+	and k1, k0, k1 # badvaddr's low bits cleared now
 
-	dsrl k1, EntryLo_VPN_SHITF
-	ori k1, EntryLo_FLAGS
+	dsrl k1, EntryLo_VPN_SHITF # double word shift right logical
+	ori k1, EntryLo_FLAGS # entrylo format : 54----PFN----6,5---FLAGS---0
 	dmtc0 k1, C0_ENTRYLO0
 
 	li k0, EntryLo1_1G_OFFSET

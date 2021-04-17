@@ -44,7 +44,9 @@ Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu numbe
 5. Nested Dune.
 6. Support multiple architectures.
 7. Support fork related syscall, multi-thread program works almost perfectly.
+9. Less code, only about 2000 loc.
 8. Much more stable
+
 
 ## Disadvantage
 Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduce.
