@@ -329,28 +329,6 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 
 typedef void (*CHILD_ENTRY_PTR)(struct kvm_cpu *cpu);
 
-void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
-				  u64 child_host_stack)
-{
-	u64 r4 = parent_cpu->syscall_parameter[1];
-	// u64 r5 = parent_cpu->syscall_parameter[2];
-	u64 r6 = parent_cpu->syscall_parameter[3];
-	u64 r7 = parent_cpu->syscall_parameter[4];
-	u64 r8 = parent_cpu->syscall_parameter[5];
-	u64 r9 = parent_cpu->syscall_parameter[6];
-	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = dune_clone(r4, child_host_stack, r6, r7, r8, r9);
-
-	// This dependes on arch!
-	if (child_pid > 0) {
-		parent_cpu->syscall_parameter[0] = child_pid;
-		parent_cpu->syscall_parameter[4] = 0;
-	} else {
-		parent_cpu->syscall_parameter[0] = -child_pid;
-		parent_cpu->syscall_parameter[4] = 1;
-	}
-}
-
 struct child_args {
 	CHILD_ENTRY_PTR entry;
 	struct kvm_cpu *cpu;

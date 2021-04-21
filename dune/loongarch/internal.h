@@ -247,6 +247,31 @@
 #define CSR_DMW1_BASE		(CSR_DMW1_VSEG << DMW_PABITS)
 #define CSR_DMW1_INIT		(CSR_DMW1_BASE | CSR_DMW1_MAT | CSR_DMW1_PLV0)
 
+/* Kscratch registers */
+#define LOONGARCH_CSR_KS0		0x30
+#define LOONGARCH_CSR_KS1		0x31
+#define LOONGARCH_CSR_KS2		0x32
+#define LOONGARCH_CSR_KS3		0x33
+#define LOONGARCH_CSR_KS4		0x34
+#define LOONGARCH_CSR_KS5		0x35
+#define LOONGARCH_CSR_KS6		0x36
+#define LOONGARCH_CSR_KS7		0x37
+#define LOONGARCH_CSR_KS8		0x38
+
+/* TLB exception allocated KS0 and KS1 statically */
+#define TLB_EXC_KS0			LOONGARCH_CSR_KS0
+#define TLB_EXC_KS1			LOONGARCH_CSR_KS1
+#define TLB_KSCRATCH_MASK		(1 << 0 | 1 << 1)
+
+/* KVM allocated KS2 and KS3 statically */
+#define KVM_VCPU_KS			LOONGARCH_CSR_KS2
+#define KVM_TEMP_KS			LOONGARCH_CSR_KS3
+#define KVM_KSCRATCH_MASK		(1 << 2 | 1 << 3)
+
+/* Percpu allocated KS4 */
+#define PERCPU_KS4			LOONGARCH_CSR_KS4
+// host 内核会静态的使用这些数值
+
 // copied from arch/loongarch/include/asm/regdef.h
 #define zero $r0 /* wired zero */
 #define ra $r1 /* return address */
@@ -290,23 +315,20 @@
 //
 // (64 + 14) * vec_size
 #define CSR_ECFG_VS_SHIFT 16
-#define INSTRUCTION_LEN_IN_BYTES 4
+#define INST_SZ 4
 #define INT_OFFSET 64
 #define VEC_SIZE                                                               \
-	(1 << (INIT_VALUE_ECFG >> CSR_ECFG_VS_SHIFT)) * INSTRUCTION_LEN_IN_BYTES
+	(1 << (INIT_VALUE_ECFG >> CSR_ECFG_VS_SHIFT)) * INST_SZ
 #define ERREBASE_OFFSET (PAGESIZE * 3)
 
 #define EXCCODE_SYS 11 /* System call */
 
-// TODO 需要将清空 EntryHi 的低位吗 ?
-// TODO 岂不是 EntryHi 中间记录了的地址 和 TLBRBADV 的相同的
-//
-// TODO 最大支持的 TLB size 是什么 ?
-// TODO TLBLO 是否设置为 dirty 位如何处理 ? (最好还是设置一下吧
-// TODO 存储访问类型是什么 ?
-//
-// TODO 内核调试的策略，当 hyerpcall 不是 syscall 的源头的时候
+#define REG_SZ 8
+
+
+// TODO 增加内核调试信息，当 hyerpcall 不是 syscall 的源头的时候
 // 一次性产生所有的数值，当 hypercall 是，打印所有的常规寄存器
+// 在 hypercall 的位置
 
 #define CSR_TLBRELO_RPLV_SHIFT 63
 #define CSR_TLBRELO_RPLV (_ULCAST_(0x1) << CSR_TLBRELO_RPLV_SHIFT)
@@ -330,13 +352,13 @@
 #define CSR_TLBRELO_V_SHIFT 0
 #define CSR_TLBRELO_V (_ULCAST_(0x1) << CSR_TLBRELO_V_SHIFT)
 
-#define TLBRELO_STANDARD_BITS                                                  \
-	(CSR_TLBRELO_V | CSR_TLBRELO_WE | CSR_TLBRELO_CCA | CSR_TLBRELO_GLOBAL)
-
 // 512M 从 INIT_VALUE_PRCFG2 中获取
 #define TLB_PS 29
-#define MAX_TLB_SIZE (1 << TLB_PS)
-#define TLB_MASK (MAX_TLB_SIZE - 1)
+#define TLB_MASK ((1 << (TLB_PS + 1)) - 1)
+
+#define TLBRELO0_STANDARD_BITS                                                  \
+	(CSR_TLBRELO_V | CSR_TLBRELO_WE | CSR_TLBRELO_CCA | CSR_TLBRELO_GLOBAL)
+#define TLBRELO1_STANDARD_BITS (TLBRELO0_STANDARD_BITS | (1 << TLB_PS))
 
 // ring 0, disable interrupt, mapping
 #define CRMD_PG 4
@@ -477,9 +499,7 @@
 //
 // 至少 li 还是存在的, 
 
-// 也许将 STLB 的大小映射为 1G ?
-// 应该是不可以的
-#define INIT_VALUE_STLBPS 0xE
+#define INIT_VALUE_STLBPS 0xe
 #define INIT_VALUE_PWCTL0 0x5e56e
 #define INIT_VALUE_PWCTL1 0x2e4
 
@@ -510,5 +530,26 @@
 #define INVALID_EBASE_POSITION 0x4
 #define UNIMP_ERROR .word(0x00298000 | (0x5))
 #define HYPERCALL .word 0x00298000
+
+// copied from la-glibc/sysdeps/loongarch/sys/asm.h
+/* Declare leaf routine.  */
+#define	LEAF(symbol)			\
+	.text;				\
+	.globl	symbol;			\
+	.align	3;			\
+	cfi_startproc ;			\
+	.type	symbol, @function;	\
+symbol:
+
+# define ENTRY(symbol) LEAF(symbol)
+
+/* Mark end of function.  */
+#undef END
+#define END(function)			\
+	cfi_endproc ;			\
+	.size	function,.-function;
+
+/* Stack alignment.  */
+#define ALMASK	~15
 
 #endif /* end of include guard: INTERNAL_H_6IUWCEFP */

@@ -114,7 +114,10 @@ static void init_csr(struct kvm_cpu *cpu)
 		die("You forget to init ebase");
 
 	u64 INIT_VALUE_DMWIN1 = CSR_DMW1_INIT;
-	u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + CSR_DMW1_BASE;
+	u64 INIT_VALUE_KSCRATCH6 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
+	u64 INIT_VALUE_KSCRATCH7 = TLBRELO0_STANDARD_BITS;
+	u64 INIT_VALUE_KSCRATCH8 = TLBRELO1_STANDARD_BITS;
+
 	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
 	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
 
@@ -242,15 +245,14 @@ static void init_csr(struct kvm_cpu *cpu)
 		CSR_INIT_REG(STLBPS), CSR_INIT_REG(RVACFG),
 		CSR_INIT_REG(CPUNUM), CSR_INIT_REG(PRCFG1),
 		CSR_INIT_REG(PRCFG2), CSR_INIT_REG(PRCFG3),
-		CSR_INIT_REG(KSCRATCH0),
+		// CSR_INIT_REG(KSCRATCH0),
 		// CSR_INIT_REG(KSCRATCH1),
 		// CSR_INIT_REG(KSCRATCH2),
 		// CSR_INIT_REG(KSCRATCH3),
 		// CSR_INIT_REG(KSCRATCH4),
 		// CSR_INIT_REG(KSCRATCH5),
 		// CSR_INIT_REG(KSCRATCH6),
-		// CSR_INIT_REG(KSCRATCH7),
-		// CSR_INIT_REG(KSCRATCH8),
+		CSR_INIT_REG(KSCRATCH7), CSR_INIT_REG(KSCRATCH8),
 		// CSR_INIT_REG(TIMERID), // kvm 会初始化
 		CSR_INIT_REG(TIMERCFG),
 		// CSR_INIT_REG(TIMERTICK),
@@ -293,7 +295,7 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(UCWIN3_LO),
 		// CSR_INIT_REG(UCWIN3_HI),
 		// CSR_INIT_REG(DMWIN0),
-    CSR_INIT_REG(DMWIN1),
+		CSR_INIT_REG(DMWIN1),
 		// CSR_INIT_REG(DMWIN2),
 		// CSR_INIT_REG(DMWIN3),
 		CSR_INIT_REG(PERF0_EVENT),
@@ -391,7 +393,7 @@ guest_entry:
 
 void arch_dune_enter(struct kvm_cpu *cpu)
 {
-  BUILD_ASSERT(INIT_VALUE_PRCFG2 & (MAX_TLB_SIZE));
+	BUILD_ASSERT(INIT_VALUE_PRCFG2 & (1 << TLB_PS));
 
 	struct kvm_regs regs;
 	BUILD_ASSERT(256 == offsetof(struct kvm_regs, pc));
@@ -400,11 +402,12 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 {
-  // easy
+	// easy
 	die("unimp");
 }
 
-// TODO test the code below
+// a7 是作为 syscall number
+//
 /**
 #define INTERNAL_SYSCALL_NCS(number, err, nr, args...)                         \
 	internal_syscall##nr(number, err, args)
@@ -434,8 +437,6 @@ void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 		_sys_result;                                                   \
 	})
 
-#define __SYSCALL_CLOBBERS                                                     \
-	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
 
 # define INTERNAL_SYSCALL_ERROR_P(val, err) \
 	((unsigned long int) (val) > -4096UL)
@@ -457,15 +458,40 @@ long int syscall(long int syscall_number, long int arg1, long int arg2,
 }
 */
 
-// easy
+#define __SYSCALL_CLOBBERS                                                     \
+	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
+
+#ifdef LOONGSON
 bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
-	die("unimp");
+	register long int __a7 asm("$a7") = cpu->syscall_parameter[0];
+	register long int __a0 asm("$a0") = cpu->syscall_parameter[1];
+	register long int __a1 asm("$a1") = cpu->syscall_parameter[2];
+	register long int __a2 asm("$a2") = cpu->syscall_parameter[3];
+	register long int __a3 asm("$a3") = cpu->syscall_parameter[4];
+	register long int __a4 asm("$a4") = cpu->syscall_parameter[5];
+	register long int __a5 asm("$a5") = cpu->syscall_parameter[6];
+	register long int __a6 asm("$a6") = cpu->syscall_parameter[7];
+
+	__asm__ volatile("syscall	0\n\t"
+			 : "+r"(__a0)
+			 : "r"(__a7), "r"(__a1), "r"(__a2), "r"(__a3),
+			   "r"(__a4), "r"(__a5), "r"(__a6)
+			 : __SYSCALL_CLOBBERS);
+
+	if (is_fork && __a0 == 0) {
+		return true;
+	}
+
+	cpu->syscall_parameter[0] = __a0;
 	return false;
 }
+#endif
+
 void child_entry(struct kvm_cpu *cpu)
 {
 	// easy
+  // 
 	die("unimp");
 }
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
@@ -477,25 +503,47 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 {
 	die("unimp");
 }
+
+// register void *__thread_self asm ("$tp"); [> FIXME <]
+// # define READ_THREAD_POINTER() ({ __thread_self; })
+//
+// # define TLS_INIT_TP(tcbp) \
+//   ({ __thread_self = (char*)tcbp + TLS_TCB_OFFSET; NULL; })
 void arch_handle_tls(struct kvm_cpu *vcpu)
 {
-	// 似乎不需要处理
-	die("unimp");
+  // loongarch 上没有这条 syscall 的
+  // 但是在 clone 的时候需要处理
 }
+
+// 应该没有特殊的 syscall 需要处理
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)
 {
-	// should be zero
-	die("unimp");
 	return false;
 }
+
 void escape()
 {
 	die("unimp");
 }
 
-u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9)
+u64 dune_clone(u64, u64, u64, u64, u64);
+
+// TODO 这个函数的名称改一下
+void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+				  u64 child_host_stack)
 {
-	die("unimp");
-	// reference the glibc
-	return 0;
+	u64 arg0 = parent_cpu->syscall_parameter[0];
+	// u64 a1 = parent_cpu->syscall_parameter[1];
+	u64 arg2 = parent_cpu->syscall_parameter[2];
+	u64 arg3 = parent_cpu->syscall_parameter[3];
+	u64 arg4 = parent_cpu->syscall_parameter[4];
+
+	// parent 原路返回，child 进入到 child_entry 中间
+	long child_pid = dune_clone(arg0, child_host_stack, arg2, arg3, arg4);
+
+	if (child_pid > 0) {
+		parent_cpu->syscall_parameter[0] = child_pid;
+	} else {
+		parent_cpu->syscall_parameter[0] = -child_pid;
+	}
 }

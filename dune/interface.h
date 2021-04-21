@@ -54,7 +54,7 @@ struct kvm_cpu {
 	struct kvm_vm *vm;
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
-	u64 syscall_parameter[7]; // TODO 为什么是 7, linux 对于这个限制是什么?
+	u64 syscall_parameter[8];
 
 	// architecture specified vm state
 	struct thread_info info;
@@ -120,7 +120,8 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno);
 void arch_handle_tls(struct kvm_cpu *vcpu);
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno);
-u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
+void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+				  u64 child_host_stack);
 void escape(); // TODO
 /**
  * History:        #0
