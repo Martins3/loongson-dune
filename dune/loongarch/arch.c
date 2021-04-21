@@ -67,15 +67,34 @@ static void init_ebase(struct kvm_cpu *cpu)
 	//
 	// 可以利用 save 寄存器是曾经的 scratch 寄存器
 	//
-	// 直接映射窗口
-	//
 	// 中断信号被采样到 CSR.ESTA.IS 和 CSR.ECFG.LIE, 得到 13 bit 的中断向量
-	//
-	// - [ ] CS.ECFG.VS 是什么东西
-	//
-	// - [ ] 例外前模式信息，包括中断吗? 为什么以前不需要保存? 如果嵌套例外，比如 syscall 中间调用 syscall，那么怎么搞
-	//
-	// - [ ]
+
+	BUILD_ASSERT(512 == VEC_SIZE);
+	BUILD_ASSERT(INT_OFFSET * VEC_SIZE == PAGESIZE * 2);
+	BUILD_ASSERT(VEC_SIZE * 14 < PAGESIZE);
+
+	cpu->info.ebase = mmap_pages(4);
+	for (int i = 0; i < PAGESIZE; ++i) {
+		int *x = (int *)cpu->info.ebase;
+		x = x + i;
+		*x = (0x00298000 | INVALID_EBASE_POSITION);
+	}
+
+	pr_info("ebase address : %llx", cpu->info.ebase);
+
+	extern void err_entry_begin(void);
+	extern void err_entry_end(void);
+	extern void tlb_refill_entry_begin(void);
+	extern void tlb_refill_entry_end(void);
+	extern void syscall_entry_begin(void);
+	extern void syscall_entry_end(void);
+
+	memcpy(cpu->info.ebase, tlb_refill_entry_begin,
+	       tlb_refill_entry_end - tlb_refill_entry_begin);
+	memcpy(cpu->info.ebase + VEC_SIZE * EXCCODE_SYS, syscall_entry_begin,
+	       syscall_entry_end - syscall_entry_begin);
+	memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
+	       err_entry_end - err_entry_begin);
 }
 
 struct csr_reg {
@@ -89,18 +108,205 @@ struct csr_reg {
 		.reg = { .id = KVM_CSR_##X }, .name = #X, .v = INIT_VALUE_##X  \
 	}
 
-// TODO 验证这个数值
-static const u64 DIRECT_MAP_BASE = 0x9800000000000000;
 static void init_csr(struct kvm_cpu *cpu)
 {
 	if (!cpu->info.ebase)
 		die("You forget to init ebase");
 
-	u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + DIRECT_MAP_BASE;
+	u64 INIT_VALUE_DMWIN1 = CSR_DMW1_INIT;
+	u64 INIT_VALUE_KSCRATCH0 = (u64)cpu->info.ebase + CSR_DMW1_BASE;
+	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
+	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
+
+	u64 INIT_VALUE_CPUNUM = cpu->cpu_id;
+
+	u64 INIT_VALUE_ERREBASE = (u64)cpu->info.ebase + ERREBASE_OFFSET;
+
+	// 在 arch/loongarch/include/asm/loongarchregs.h
+	// 中间定义了一堆 IOCSR 寄存器，实际上完全不知道如何使用
+	// - [x] 如果不正确设置 IOCSR，其影响是什么?
+	//  - 这个外设本身就不是我们管理的
+	// - [x] LOONGARCH_CSR_TMID 和 LOONGARCH_IOCSR_TIMER_CFG 的关系是什么?
+	//  - 应该是 node 的时钟 和 本地时钟的关系吧
+	//
+	// IOCSR 只是用于各种地址空间的。
 
 	u64 gg = KVM_CSR_CRMD;
 	struct csr_reg one_regs[] = {
 		CSR_INIT_REG(CRMD),
+		// CSR_INIT_REG(PRMD),
+		CSR_INIT_REG(EUEN), CSR_INIT_REG(MISC), CSR_INIT_REG(ECFG),
+		// CSR_INIT_REG(ESTAT),
+		// CSR_INIT_REG(EPC),
+		// CSR_INIT_REG(BADV),
+		// CSR_INIT_REG(BADI),
+		CSR_INIT_REG(EBASE),
+		// CSR_INIT_REG(TLBIDX),
+		// CSR_INIT_REG(TLBHI),
+		// CSR_INIT_REG(TLBLO0),
+		// CSR_INIT_REG(TLBLO1),
+		//
+		// CSR_INIT_REG(GTLBC), gcsr
+		// CSR_INIT_REG(TRGP),  gcsr
+		//
+		// 实际上，基本相同:
+		// 进行 gpa 到 gpa 之间的映射，一致都是 kvm 在维护的
+		// kvm->arch.gpa_mm.pgd
+		// 实际上，根本找不到在什么地方进行了 TLB refill 的分析
+		//
+		//
+		// 检查 kvm 的源代码，分析是如何处理 inctl 的, 中断直接到达的，还是 ?
+		// 在内核中间搜索 ginct 的
+		// 1. 设置 KVM_CSR_ESTAT 的作用:
+		//
+		// 合乎逻辑
+		// case KVM_CSR_ESTAT:
+		// write_gcsr_estat(v);
+		// write_csr_gintc((v & 0x3fc) >> 2);
+		//
+		// 2. 在 vcpu_load 和 vcpu_set 的时候存在一些作用
+		//  - kvm_loongarch_deliver_interrupts
+		//
+		// 分析完成 kvm_loongarch_deliver_interrupts 的调用之后,
+		// 目前的 kvm 实际上并没有用上这些的高级功能，只是可以通过 ioctl 将中断注入到
+		// 其中的方法。
+		//
+		// 重新阅读 entry.S 的代码 : 一些汇编，比以前的代码算是清晰很多了
+		//
+		// 和 VMM 相关的例外 : TLB refill 以及各种类型的
+		// 手册中间，描述 vm exit 的种类 ? 1.3
+		//
+		// load / store 监视
+		// 暂时和虚拟化是没有什么关系的，只是当存在虚拟机的时候需要
+		// 难道 guest 中间无法使用 load / store 监视吗? (可以的
+		// 如何初始化 load / store 监视点之类寄存器(因为现在不需要进行初始化，所以直接 disable 处理就可以了
+		//
+		// 监视点例外 : 的确是在列表中间
+		//
+		// TRGP 的作用
+		// TLBRD : 是根据 Index 获取 TLB 的信息，所以不一定知道自己到底在哪一个位置
+		// 根据虚拟地址获取的 TLBSRCH 指令
+		//
+		// 1.4.4 / 1.4.5 软中断 和 硬中断的描述
+		// 关闭硬件的所有方式
+		// HWIC : 用 host 的硬件撤销清除 Guest 中断
+		// HWIP : 直接相连
+		// HWIS : 中断注入
+		// 其实就是中断可以直接注入，也可以完全转发，或者部分转发
+		//
+		// 软中断的控制比较简单了
+		//
+		// 控制了 guest 使用 TLB 的数量?
+		// 在逻辑上是怎么操作的，TLBFILL 和 INDEX 可以选中的范围吗 ?
+		// 对于软件层的影响是什么 ?
+		// 实际上，在软件层次，这没有任何的影响，kvm 的代码没有任何的检查。
+		//
+		// STLB 和 MTLB 的共享
+		// - [x] 如果在 guest 中间设置的 STB 的 size 和 host 不同, 两者还可以共享吗?(是的，所以保证 STLBSZ 相同)
+		// - [x] GID 的使用逻辑 1.2.3 中描述
+		// - [x] VMM page : gpa 到 hpa 映射也是放到 TLB 中间的
+		//
+		// 问题是靠什么区分 VMM page 和 host page 的 TLB
+		// - gpa 和 hva 的作为索引根本无法区分两者
+		// - 查看内核的代码?
+		// - 猜测在 guest mode 中间，当进行使用 Host 的, TLB refill 是自动的，并且自动使用 pgd.mm 的内容
+		//
+		// 1.2.2 中间说明, 非常的模糊, 莫名奇妙
+		// - [x] PGDL 和 PGDH 的符号扩展?
+		// - [x] 什么叫做 PGDH 和 GPDL 只有一套，所以其内容是相同的(什么垃圾文档
+		//
+		// 检查一下虚拟地址空间的范围是什么 ? 不用看，肯定没有问题的
+		// - [x] 内核的代码的检查
+		// - [x] 内核模块检查一下
+		//
+		// LONG_L	\tmp, \tmp1, VM_GPGD
+		// csrwr	\tmp, LOONGARCH_CSR_PGDL
+		//
+		// GTLBC 在控制 Host 的 Guest ID 的取值
+		//
+		// 为什么 TLBRPRMD 中间含有 PGM，但是在 PRMD 中间没有
+		// 1.7.1 : 这个记录了之前是否是客户机，如果是，那么就执行 eret 恢复客户机的状态
+		// 当 eret 的时候，硬件用于区分当前是否在 Host 的状态 还是 Guest 的
+		//
+		// 在一般的状态，GSTAT 的 PGM 中间了保存了应该有的信息。
+		//
+		// GSTAT::GID 和 GTLBC::TGID :
+		// 1. 一个是设置给虚拟机的 GID
+		// 2. 一个是如果，想要进行控制虚拟机的 TLB, 那么需要提前设置该数值
+		//
+		// CSR_INIT_REG(ASID),
+		// CSR_INIT_REG(PGDL),
+		// CSR_INIT_REG(PGDH),
+		// CSR_INIT_REG(PGD),
+		CSR_INIT_REG(PWCTL0), CSR_INIT_REG(PWCTL1),
+		CSR_INIT_REG(STLBPS), CSR_INIT_REG(RVACFG),
+		CSR_INIT_REG(CPUNUM), CSR_INIT_REG(PRCFG1),
+		CSR_INIT_REG(PRCFG2), CSR_INIT_REG(PRCFG3),
+		CSR_INIT_REG(KSCRATCH0),
+		// CSR_INIT_REG(KSCRATCH1),
+		// CSR_INIT_REG(KSCRATCH2),
+		// CSR_INIT_REG(KSCRATCH3),
+		// CSR_INIT_REG(KSCRATCH4),
+		// CSR_INIT_REG(KSCRATCH5),
+		// CSR_INIT_REG(KSCRATCH6),
+		// CSR_INIT_REG(KSCRATCH7),
+		// CSR_INIT_REG(KSCRATCH8),
+		// CSR_INIT_REG(TIMERID), // kvm 会初始化
+		CSR_INIT_REG(TIMERCFG),
+		// CSR_INIT_REG(TIMERTICK),
+		// CSR_INIT_REG(TIMEROFFSET),
+		// CSR_INIT_REG(GSTAT), gcsr
+		// CSR_INIT_REG(GCFG),  gcsr
+		// CSR_INIT_REG(GINTC), gcsr
+		// CSR_INIT_REG(GCNTC), gcsr
+		CSR_INIT_REG(LLBCTL), CSR_INIT_REG(IMPCTL1),
+		// CSR_INIT_REG(IMPCTL2),
+		// CSR_INIT_REG(GNMI),
+		CSR_INIT_REG(TLBREBASE),
+		// CSR_INIT_REG(TLBRBADV),
+		// CSR_INIT_REG(TLBREPC),
+		// CSR_INIT_REG(TLBRSAVE),
+		// CSR_INIT_REG(TLBRELO0),
+		// CSR_INIT_REG(TLBRELO1),
+		// CSR_INIT_REG(TLBREHI),
+		// CSR_INIT_REG(TLBRPRMD),
+		CSR_INIT_REG(ERRCTL),
+		// CSR_INIT_REG(ERRINFO1),
+		// CSR_INIT_REG(ERRINFO2),
+		CSR_INIT_REG(ERREBASE),
+		// CSR_INIT_REG(ERREPC),
+		// CSR_INIT_REG(ERRSAVE),
+		// CSR_INIT_REG(CTAG),
+		// 虚拟化手册 1.3.3 这都是微结构相关的寄存器，修改需要 gpsi 来处理
+		// 关于 mcsr 的具体含义，暂时也是不清楚的, host 是什么就填写什么
+		CSR_INIT_REG(MCSR0), CSR_INIT_REG(MCSR1), CSR_INIT_REG(MCSR2),
+		CSR_INIT_REG(MCSR3), CSR_INIT_REG(MCSR8), CSR_INIT_REG(MCSR9),
+		CSR_INIT_REG(MCSR10), CSR_INIT_REG(MCSR24),
+		// Uncached accelerate windows registers
+		// CSR_INIT_REG(UCWIN),
+		// CSR_INIT_REG(UCWIN0_LO),
+		// CSR_INIT_REG(UCWIN0_HI),
+		// CSR_INIT_REG(UCWIN1_LO),
+		// CSR_INIT_REG(UCWIN1_HI),
+		// CSR_INIT_REG(UCWIN2_LO),
+		// CSR_INIT_REG(UCWIN2_HI),
+		// CSR_INIT_REG(UCWIN3_LO),
+		// CSR_INIT_REG(UCWIN3_HI),
+		// CSR_INIT_REG(DMWIN0),
+    CSR_INIT_REG(DMWIN1),
+		// CSR_INIT_REG(DMWIN2),
+		// CSR_INIT_REG(DMWIN3),
+		CSR_INIT_REG(PERF0_EVENT),
+		// CSR_INIT_REG(PERF0_COUNT),
+		CSR_INIT_REG(PERF1_EVENT),
+		// CSR_INIT_REG(PERF1_COUNT),
+		CSR_INIT_REG(PERF2_EVENT),
+		// CSR_INIT_REG(PERF2_COUNT),
+		CSR_INIT_REG(PERF3_EVENT),
+		// CSR_INIT_REG(PERF3_COUNT),
+		CSR_INIT_REG(DEBUG),
+		// CSR_INIT_REG(DEPC),
+		// CSR_INIT_REG(DESAVE),
 	};
 
 	for (int i = 0; i < sizeof(one_regs) / sizeof(struct csr_reg); ++i) {
@@ -185,6 +391,8 @@ guest_entry:
 
 void arch_dune_enter(struct kvm_cpu *cpu)
 {
+  BUILD_ASSERT(INIT_VALUE_PRCFG2 & (MAX_TLB_SIZE));
+
 	struct kvm_regs regs;
 	BUILD_ASSERT(256 == offsetof(struct kvm_regs, pc));
 	kvm_launch(cpu, &regs, false);
@@ -192,7 +400,7 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 {
-	// 解决 wip 的问题
+  // easy
 	die("unimp");
 }
 
@@ -249,6 +457,7 @@ long int syscall(long int syscall_number, long int arg1, long int arg2,
 }
 */
 
+// easy
 bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
 	die("unimp");
@@ -270,7 +479,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 }
 void arch_handle_tls(struct kvm_cpu *vcpu)
 {
-	// easy
+	// 似乎不需要处理
 	die("unimp");
 }
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)

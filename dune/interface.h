@@ -14,7 +14,6 @@
 #error Unsupported Architecture
 #endif
 
-
 void pr_warn(const char *err, ...);
 void pr_info(const char *info, ...);
 void die(const char *err, ...);
@@ -30,7 +29,6 @@ void die(const char *err, ...);
 	do {                                                                   \
 		(void)sizeof(char[1 - 2 * !(cond)]);                           \
 	} while (0)
-
 
 struct kvm_cpu;
 struct vcpu_pool_ele {
@@ -58,7 +56,7 @@ struct kvm_cpu {
 	struct kvm_run *kvm_run;
 	u64 syscall_parameter[7]; // TODO 为什么是 7, linux 对于这个限制是什么?
 
-  // architecture specified vm state
+	// architecture specified vm state
 	struct thread_info info;
 };
 
@@ -66,12 +64,18 @@ struct kvm_cpu {
 #define PROT_RW (PROT_READ | PROT_WRITE)
 #define MAP_ANON_NORESERVE (MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE)
 
-static inline void *mmap_one_page()
+static inline void *mmap_pages(int num)
 {
-	void *addr = mmap(NULL, PAGESIZE, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
-	if (addr == NULL && ((u64)addr & 0xffff) != 0)
+	void *addr =
+		mmap(NULL, PAGESIZE * num, PROT_RWX, MAP_ANON_NORESERVE, -1, 0);
+	if (addr == NULL)
 		die("mmap_one_page");
 	return addr;
+}
+
+static inline void *mmap_one_page()
+{
+	return mmap_pages(1);
 }
 
 void vacate_current_stack(struct kvm_cpu *cpu);

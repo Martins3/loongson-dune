@@ -1,4 +1,4 @@
-#include "cp0.h"
+#include "internal.h"
 .global ebase_error_entry_begin
 .global ebase_error_entry_end
 ebase_error_entry_begin:
