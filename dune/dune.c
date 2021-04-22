@@ -15,6 +15,7 @@
 
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <pthread.h>
 
 #include "interface.h"
 
@@ -24,7 +25,6 @@
 #define __USE_GNU
 #endif
 #include <sched.h>
-#include <pthread.h>
 
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
 
@@ -376,7 +376,6 @@ struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 
 void child_entry(struct kvm_cpu *cpu);
 
-// TODO 如果 clone 失败，记得回收这些资源
 struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 {
 	// without CLONE_VM
@@ -389,13 +388,8 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (sysno == SYS_CLONE) {
 		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-		child_host_stack += -(sizeof(struct child_args));
-		assert(sizeof(struct child_args) == 16); // check __do_simulate_clone
-		struct child_args *child_args_on_stack_top =
-			(struct child_args *)(child_host_stack);
-		child_args_on_stack_top->entry = child_entry;
-		child_args_on_stack_top->cpu = child_cpu;
-
+    // in init_child_thread_info, set up the `a0` regs
+    // child thread will jump to host_loop with `a0 = child_cpu`
 		do_simulate_clone(parent_cpu, child_host_stack);
 	}
 
@@ -403,7 +397,7 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die("Unable test clone3 with 4.19 kernel\n");
 	}
 
-	// TODO 通过返回 NULL 告知是 parent, 但是需要使用基本函数告知
+	// 通过返回 NULL 告知是 parent
 	return NULL;
 }
 

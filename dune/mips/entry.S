@@ -93,8 +93,7 @@ __do_simulate_clone:
 	jr	ra
 	nop
   // child gotos a new function
-1:	ld	$25, 0(sp)	# function pointer
-	ld	$4, 8(sp)	# argument pointer
+1:	dla	$25, host_loop	# function pointer
 	jalr	$25		# call the user's function
 	nop
 	move 	$4, $2

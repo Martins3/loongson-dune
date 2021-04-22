@@ -145,12 +145,6 @@ static void ebase_init(struct kvm_cpu *cpu)
 	ebase_init_general(cpu);
 }
 
-static void ebase_share(struct kvm_cpu *child_cpu,
-			const struct kvm_cpu *parent_cpu)
-{
-	child_cpu->info.ebase = parent_cpu->info.ebase;
-}
-
 static void init_cp0(struct kvm_cpu *cpu)
 {
 	if (!cpu->info.ebase)
@@ -444,7 +438,6 @@ bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 
 void child_entry(struct kvm_cpu *cpu)
 {
-	kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_USERLOCAL, get_tp());
 	host_loop(cpu);
 }
 
@@ -467,11 +460,10 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
-// TODO 如果 fork 或者 clone 失败，创建的虚拟机和 vcpu 都需要销毁才对
-//
+
 // TODO 为什么新创建的 vcpu 不能直接进入到 syscall handler 中间 ?
 // 我的猜测是因为 : pc 导致直接进入 xphysc 的位置，pagegrain 没有打开，所以实际
-// 上出现问题
+// 上出现问题。
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
 {
@@ -486,6 +478,14 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	// loongson kvm assign gpr[2] with hypercall.ret in in kvm_arch_vcpu_ioctl_run
 	child_cpu->kvm_run->hypercall.ret = child_regs.gpr[2];
+
+	if (parent_cpu->syscall_parameter[1] | CLONE_SETTLS) {
+		kvm_set_cp0_reg(cpu, KVM_REG_MIPS_CP0_USERLOCAL,
+				parent_cpu->syscall_parameter[5]);
+	}
+
+  // #define a0	$4
+  child_regs.gpr[4] = (u64)child_cpu;
 
 	// #define sp	$29
 	if (sysno == SYS_CLONE) {
@@ -533,8 +533,7 @@ bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)
 
 u64 __do_simulate_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
 // 这个函数想要做成什么想要
-void do_simulate_clone(struct kvm_cpu *parent_cpu,
-				  u64 child_host_stack)
+void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
 {
 	u64 r4 = parent_cpu->syscall_parameter[1];
 	// u64 r5 = parent_cpu->syscall_parameter[2];
@@ -542,8 +541,9 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu,
 	u64 r7 = parent_cpu->syscall_parameter[4];
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
-	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = __do_simulate_clone(r4, child_host_stack, r6, r7, r8, r9);
+	// parent 原路返回，child 直接进入到 host_loop
+	long child_pid =
+		__do_simulate_clone(r4, child_host_stack, r6, r7, r8, r9);
 
 	// This dependes on arch!
 	if (child_pid > 0) {
@@ -554,4 +554,3 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu,
 		parent_cpu->syscall_parameter[4] = 1;
 	}
 }
-

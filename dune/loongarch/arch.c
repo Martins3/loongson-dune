@@ -8,6 +8,12 @@
 #include "internal.h"
 #include "../interface.h"
 
+#define _GNU_SOURCE
+#ifndef __USE_GNU
+#define __USE_GNU
+#endif
+#include <sched.h>
+
 void arch_dump_regs(int debug_fd, struct kvm_regs regs)
 {
 	dprintf(debug_fd, "\n Registers:\n");
@@ -57,6 +63,85 @@ void arch_dump_regs(int debug_fd, struct kvm_regs regs)
 
 	dprintf(debug_fd, "\n");
 }
+
+enum ACCESS_OP {
+	GET = KVM_GET_ONE_REG,
+	SET = KVM_SET_ONE_REG,
+};
+
+static void kvm_access_reg(const struct kvm_cpu *cpu, struct kvm_one_reg *reg,
+			   enum ACCESS_OP op)
+{
+	if (ioctl(cpu->vcpu_fd, op, reg) < 0)
+		die("kvm_access_reg");
+}
+
+static u64 kvm_access_csr_reg(const struct kvm_cpu *cpu, u64 id,
+			      enum ACCESS_OP op, u64 value)
+{
+	struct kvm_one_reg reg;
+	u64 v = (op == GET) ? 0 : value;
+	reg.addr = (u64) & (v);
+	reg.id = id;
+
+	kvm_access_reg(cpu, &reg, op);
+	return v;
+}
+
+static u64 kvm_get_csr_reg(const struct kvm_cpu *cpu, u64 id)
+{
+	return kvm_access_csr_reg(cpu, id, GET, 0);
+}
+
+static void kvm_set_csr_reg(const struct kvm_cpu *cpu, u64 id, u64 v)
+{
+	kvm_access_csr_reg(cpu, id, SET, v);
+}
+
+// static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
+				// const struct mips_fpu_struct *fpu_regs,
+				// enum ACCESS_OP op)
+// {
+	// struct kvm_one_reg reg;
+//
+	// for (int i = 0; i < NUM_FPU_REGS; ++i) {
+		// reg.id = KVM_REG_MIPS_VEC_256(i);
+		// reg.addr = (u64) & (fpu_regs->fpr[i]);
+		// kvm_access_reg(cpu, &reg, op);
+	// }
+//
+	// reg.id = KVM_REG_MIPS_FCR_CSR;
+	// reg.addr = (u64) & (fpu_regs->fcr31);
+	// kvm_access_reg(cpu, &reg, op);
+//
+	// reg.id = KVM_REG_MIPS_MSA_CSR;
+	// reg.addr = (u64) & (fpu_regs->msacsr);
+	// kvm_access_reg(cpu, &reg, op);
+// }
+//
+// static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
+					 // const struct mips_fpu_struct *fpu_regs)
+// {
+	// kvm_access_fpu_regs(cpu, fpu_regs, GET);
+// }
+//
+// static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
+					 // const struct mips_fpu_struct *fpu_regs)
+// {
+	// kvm_access_fpu_regs(cpu, fpu_regs, SET);
+// }
+//
+// static void init_fpu(struct kvm_cpu *cpu)
+// {
+	// kvm_enable_fpu(cpu);
+//
+	// struct mips_fpu_struct fpu_regs;
+	// get_fpu_regs(&fpu_regs);
+	// get_fcsr(&fpu_regs.fcr31);
+	// get_msacsr(&fpu_regs.msacsr);
+//
+	// kvm_set_fpu_regs(cpu, &fpu_regs);
+// }
 
 static void init_ebase(struct kvm_cpu *cpu)
 {
@@ -327,7 +412,7 @@ static void init_csr(struct kvm_cpu *cpu)
 }
 
 static int __attribute__((noinline))
-kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs, u64 is_guest)
+kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
 	asm goto("\n\t"
 		 "st.d $r0,  $r5, 0\n\t"
@@ -397,13 +482,7 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 
 	struct kvm_regs regs;
 	BUILD_ASSERT(256 == offsetof(struct kvm_regs, pc));
-	kvm_launch(cpu, &regs, false);
-}
-
-void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
-{
-	// easy
-	die("unimp");
+	kvm_launch(cpu, &regs);
 }
 
 // a7 是作为 syscall number
@@ -488,29 +567,64 @@ bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 }
 #endif
 
-void child_entry(struct kvm_cpu *cpu)
-{
-	// easy
-// register void *__thread_self asm ("$tp"); [> FIXME <]
-// # define READ_THREAD_POINTER() ({ __thread_self; })
-//
-// # define TLS_INIT_TP(tcbp) \
-//   ({ __thread_self = (char*)tcbp + TLS_TCB_OFFSET; NULL; })
-	host_loop(cpu);
-}
+
+
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 {
-	die("unimp");
+	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(parent_cpu->info.regs)) <
+	    0)
+		die("KVM_GET_REGS");
+
+	parent_cpu->info.era =
+		kvm_get_csr_reg(parent_cpu, KVM_LOONGARCH_CSR_EPC);
+
+  // TODO
+	// kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
+
+// TODO 再次检查一次参数偏移, 感觉很别扭
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
 {
-	die("unimp");
+	struct kvm_regs child_regs;
+	ebase_share(child_cpu, parent_cpu);
+
+	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
+
+  // #define v0 $r4
+  child_regs.gpr[4] = 0;
+  // see arch/loongarch/kvm/loongisa.c:kvm_arch_vcpu_ioctl_run
+	child_cpu->kvm_run->hypercall.ret = child_regs.gpr[4];
+
+	if (parent_cpu->syscall_parameter[0] | CLONE_SETTLS) {
+    child_regs.gpr[2] = parent_cpu->syscall_parameter[4];
+	}
+
+  // #define a1 $r5
+  child_regs.gpr[5] = (u64)child_cpu;
+
+	if (sysno == SYS_CLONE) {
+		// see linux kernel fork.c:copy_thread
+    // #define sp $r3
+		if (parent_cpu->syscall_parameter[1] != 0)
+			child_regs.gpr[3] = parent_cpu->syscall_parameter[1];
+	} else if (sysno == SYS_CLONE3) {
+		die("No support for clone3");
+	}
+
+	child_regs.pc = parent_cpu->info.era + 4;
+
+	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
+		die("KVM_SET_REGS");
+
+  // TODO
+	// dup_fpu(child_cpu, &parent_cpu->info.fpu);
+  init_csr(child_cpu);
 }
 
 void arch_set_thread_area(struct kvm_cpu *vcpu)
 {
-  // loongarch 上没有 SYS_SET_THREAD_AREA
+	// loongarch 上没有 SYS_SET_THREAD_AREA
 }
 
 // 应该没有特殊的 syscall 需要处理
@@ -526,9 +640,7 @@ void escape()
 
 u64 __do_simulate_clone(u64, u64, u64, u64, u64);
 
-// TODO 这个函数的名称改一下
-void do_simulate_clone(struct kvm_cpu *parent_cpu,
-				  u64 child_host_stack)
+void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
 {
 	u64 arg0 = parent_cpu->syscall_parameter[0];
 	// u64 a1 = parent_cpu->syscall_parameter[1];
@@ -537,7 +649,8 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu,
 	u64 arg4 = parent_cpu->syscall_parameter[4];
 
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = __do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4);
+	long child_pid =
+		__do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;

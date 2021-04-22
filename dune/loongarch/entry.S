@@ -60,6 +60,12 @@ ld.d v0, t0, 0
 ertn
 syscall_entry_end:
 
+.global host_loop
+.global switch_stack
+switch_stack:
+	move sp, a1
+	b host_loop /* host_loop 绝对不会返回 */
+
 /* copied from /sysdeps/unix/sysv/linux/loongarch/clone.S */
 // 参考 emulate_fork_by_two_vcpu 中在 stack 上设置的参数
 ENTRY (__clone)
@@ -74,13 +80,7 @@ ENTRY (__clone)
 
 L (child):
   /* t0 是 __SYSCALL_CLOBBERS 寄存器，可以随意修改 */
-  ld.d t0, sp, 0 /* child_entry */
-  ld.d a0, sp, 8 /* vcpu */
-  jirl zero, t0, 0 /* child_entry 接下来调用 host_loop，无需返回 */
+  move a0, a1
+  b host_loop
 END (__do_simulate_clone)
 
-.global host_loop
-.global switch_stack
-switch_stack:
-	move sp, a1
-	b host_loop /* host_loop 绝对不会返回 */
