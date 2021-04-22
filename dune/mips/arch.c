@@ -531,9 +531,9 @@ bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)
 	return false;
 }
 
-u64 dune_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
+u64 __do_simulate_clone(u64 r4, u64 r5, u64 r6, u64 r7, u64 r8, u64 r9);
 // 这个函数想要做成什么想要
-void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+void do_simulate_clone(struct kvm_cpu *parent_cpu,
 				  u64 child_host_stack)
 {
 	u64 r4 = parent_cpu->syscall_parameter[1];
@@ -543,7 +543,7 @@ void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
 	u64 r8 = parent_cpu->syscall_parameter[5];
 	u64 r9 = parent_cpu->syscall_parameter[6];
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = dune_clone(r4, child_host_stack, r6, r7, r8, r9);
+	long child_pid = __do_simulate_clone(r4, child_host_stack, r6, r7, r8, r9);
 
 	// This dependes on arch!
 	if (child_pid > 0) {

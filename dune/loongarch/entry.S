@@ -77,7 +77,7 @@ L (child):
   ld.d t0, sp, 0 /* child_entry */
   ld.d a0, sp, 8 /* vcpu */
   jirl zero, t0, 0 /* child_entry 接下来调用 host_loop，无需返回 */
-END (dune_clone)
+END (__do_simulate_clone)
 
 .global host_loop
 .global switch_stack

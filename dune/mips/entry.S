@@ -77,9 +77,9 @@ switch_stack:
 // TODO @function , maybe add this to other functions too
 // musl 的作者为什么不采用 LEAF 和 END ?
 .set	noreorder
-.global	dune_clone
-.type	dune_clone,@function
-dune_clone:
+.global	__do_simulate_clone
+.type	__do_simulate_clone,@function
+__do_simulate_clone:
 	li	$2, 5055 # clone
 	syscall
 	beq	$7, $0, 1f

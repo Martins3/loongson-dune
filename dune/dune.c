@@ -390,13 +390,13 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
 		child_host_stack += -(sizeof(struct child_args));
-		assert(sizeof(struct child_args) == 16); // check dune_clone
+		assert(sizeof(struct child_args) == 16); // check __do_simulate_clone
 		struct child_args *child_args_on_stack_top =
 			(struct child_args *)(child_host_stack);
 		child_args_on_stack_top->entry = child_entry;
 		child_args_on_stack_top->cpu = child_cpu;
 
-		emulate_fork_by_another_vcpu(parent_cpu, child_host_stack);
+		do_simulate_clone(parent_cpu, child_host_stack);
 	}
 
 	else if (sysno == SYS_CLONE3) {

@@ -120,7 +120,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno);
 void arch_set_thread_area(struct kvm_cpu *vcpu);
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno);
-void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+void do_simulate_clone(struct kvm_cpu *parent_cpu,
 				  u64 child_host_stack);
 void escape(); // TODO
 /**

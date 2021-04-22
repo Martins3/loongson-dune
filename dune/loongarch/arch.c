@@ -524,10 +524,10 @@ void escape()
 	die("unimp");
 }
 
-u64 dune_clone(u64, u64, u64, u64, u64);
+u64 __do_simulate_clone(u64, u64, u64, u64, u64);
 
 // TODO 这个函数的名称改一下
-void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
+void do_simulate_clone(struct kvm_cpu *parent_cpu,
 				  u64 child_host_stack)
 {
 	u64 arg0 = parent_cpu->syscall_parameter[0];
@@ -537,7 +537,7 @@ void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
 	u64 arg4 = parent_cpu->syscall_parameter[4];
 
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = dune_clone(arg0, child_host_stack, arg2, arg3, arg4);
+	long child_pid = __do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;
