@@ -6,7 +6,6 @@
 #include "internal.h"
 #include "../interface.h"
 
-// TODO 变成统一的接口, 移除 kvm_regs
 void arch_dump_regs(int debug_fd, struct kvm_regs regs)
 {
 	dprintf(debug_fd, "\n Registers:\n");
@@ -152,10 +151,6 @@ static void ebase_share(struct kvm_cpu *child_cpu,
 	child_cpu->info.ebase = parent_cpu->info.ebase;
 }
 
-// TODO 验证一下
-// cpu_guest_has_contextconfig
-// cpu_guest_has_segments
-// cpu_guest_has_maar && !cpu_guest_has_dyn_maar
 static void init_cp0(struct kvm_cpu *cpu)
 {
 	if (!cpu->info.ebase)
@@ -498,7 +493,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 		if (parent_cpu->syscall_parameter[2] != 0)
 			child_regs.gpr[29] = parent_cpu->syscall_parameter[2];
 	} else if (sysno == SYS_CLONE3) {
-		die("TODO : support clone3");
+		die("No support for clone3");
 	}
 
 	// child start at next instruction of syscall
@@ -512,7 +507,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	init_cp0(child_cpu);
 }
 
-void arch_handle_tls(struct kvm_cpu *vcpu)
+void arch_set_thread_area(struct kvm_cpu *vcpu)
 {
 	kvm_set_cp0_reg(vcpu, KVM_REG_MIPS_CP0_USERLOCAL, get_tp());
 }

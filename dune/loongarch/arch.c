@@ -407,7 +407,7 @@ void switch_stack(struct kvm_cpu *cpu, u64 host_stack)
 }
 
 // a7 是作为 syscall number
-//
+
 /**
 #define INTERNAL_SYSCALL_NCS(number, err, nr, args...)                         \
 	internal_syscall##nr(number, err, args)
@@ -491,8 +491,12 @@ bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 void child_entry(struct kvm_cpu *cpu)
 {
 	// easy
-  // 
-	die("unimp");
+// register void *__thread_self asm ("$tp"); [> FIXME <]
+// # define READ_THREAD_POINTER() ({ __thread_self; })
+//
+// # define TLS_INIT_TP(tcbp) \
+//   ({ __thread_self = (char*)tcbp + TLS_TCB_OFFSET; NULL; })
+	host_loop(cpu);
 }
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 {
@@ -504,15 +508,9 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	die("unimp");
 }
 
-// register void *__thread_self asm ("$tp"); [> FIXME <]
-// # define READ_THREAD_POINTER() ({ __thread_self; })
-//
-// # define TLS_INIT_TP(tcbp) \
-//   ({ __thread_self = (char*)tcbp + TLS_TCB_OFFSET; NULL; })
-void arch_handle_tls(struct kvm_cpu *vcpu)
+void arch_set_thread_area(struct kvm_cpu *vcpu)
 {
-  // loongarch 上没有这条 syscall 的
-  // 但是在 clone 的时候需要处理
+  // loongarch 上没有 SYS_SET_THREAD_AREA
 }
 
 // 应该没有特殊的 syscall 需要处理

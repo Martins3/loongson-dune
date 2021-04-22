@@ -73,53 +73,14 @@ ENTRY (__clone)
 	ret
 
 L (child):
-  // TODO loongarch 的 PIC register 在哪?
-  ld.d 
-  ld.d a0, 8(sp)
+  /* t0 是 __SYSCALL_CLOBBERS 寄存器，可以随意修改 */
+  ld.d t0, sp, 0 /* child_entry */
+  ld.d a0, sp, 8 /* vcpu */
+  jirl zero, t0, 0 /* child_entry 接下来调用 host_loop，无需返回 */
 END (dune_clone)
 
-//  
 .global host_loop
 .global switch_stack
 switch_stack:
 	move sp, a1
-  // TODO t9 ?
-	la.abs t9, host_loop
-  // TODO bal ?
-	bal host_loop 
-
-
-
-
-
-ENTRY (__clone)
-	/* Sanity check arguments.  */
-	beqz	a0, L (invalid)	/* No NULL function pointers.  */
-	beqz	a1, L (invalid)	/* No NULL stack pointers.  */
-
-	addi.d	a1, a1, -16	/* Reserve argument save space.  */
-	st.d	a0, a1, 0	/* Save function pointer.  */
-	st.d	a3, a1, REG_SZ	/* Save argument pointer.  */
-
-	/* The syscall expects the args to be in different slots.  */
-	or	a0, a2, zero
-	or	a2, a4, zero
-	or	a3, a5, zero
-	or	a4, a6, zero
-
-	/* Do the system call.  */
-	dli	a7,__NR_clone
-	syscall	0
-
-	blt	a0, zero ,L (error)
-	beqz	a0,L (thread_start)
-
-	/* Successful return from the parent.  */
-	ret
-
-L (invalid):
-	dli	a0, -EINVAL
-	/* Something bad happened -- no child created.  */
-L (error):
-	b	__syscall_error
-	END (dune_clone)
+	b host_loop /* host_loop 绝对不会返回 */

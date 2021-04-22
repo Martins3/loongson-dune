@@ -79,7 +79,7 @@ static inline void *mmap_one_page()
 }
 
 void vacate_current_stack(struct kvm_cpu *cpu);
-void *mmap_one_page();
+void host_loop(struct kvm_cpu *vcpu);
 
 /** 
  * copied form : https://github.com/torvalds/linux/blob/master/kernel/fork.c
@@ -118,7 +118,7 @@ void child_entry(struct kvm_cpu *cpu);
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu);
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno);
-void arch_handle_tls(struct kvm_cpu *vcpu);
+void arch_set_thread_area(struct kvm_cpu *vcpu);
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno);
 void emulate_fork_by_another_vcpu(struct kvm_cpu *parent_cpu,
 				  u64 child_host_stack);

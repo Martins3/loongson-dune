@@ -454,7 +454,7 @@ void host_loop(struct kvm_cpu *vcpu)
 		}
 
 		if (sysno == SYS_SET_THREAD_AREA) {
-			arch_handle_tls(vcpu);
+			arch_set_thread_area(vcpu);
 		}
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||

@@ -84,7 +84,7 @@
 #define INIT_VALUE_COUNT 0
 #define INIT_VALUE_ENTRYHI 0
 
-// TODO I want delay the clock interrupt as late as possible
+// try to delay the clock interrupt as late as possible
 #define INIT_VALUE_COMPARE 0xffffffff
 
 #define STATUS_BIT_INT (1 << 0)
@@ -97,15 +97,13 @@
 #define STATUS_BIT_CP1 (1 << 29) // FPU
 #define STATUS_BIT_MM (1 << 30) // 多媒体指令协处理器
 #define INIT_VALUE_STATUS STATUS_BIT_UX | STATUS_BIT_KX | STATUS_BIT_FR |STATUS_BIT_CP0 | STATUS_BIT_CP1 |STATUS_BIT_MM
-// TODO how interrupt works ?
-// TODO what's meaning of EIC and VI ?
+
 #define INIT_VALUE_INTCTL 0xfc000100
 #define INIT_VALUE_CAUSE 0
 #define INIT_VALUE_EPC 0
 
 #define INIT_VALUE_PRID 0x14c004
 
-// TODO 显然 guest 是没有对于 config 进行初始化的 ?
 #define INIT_VALUE_CONFIG  0x80064603
 #define INIT_VALUE_CONFIG1 0xfeab5593
 #define INIT_VALUE_CONFIG2 0x825f055f

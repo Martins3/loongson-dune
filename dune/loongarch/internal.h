@@ -478,26 +478,6 @@
 //
 // badvaddr 从哪里找，取决于是否是 TLB refill exception 的
 // PGD 的取值取决于是否出错的地址
-//
-// 分析 syscall 的处理方式
-// - traps.c:trap_init 中间初始化
-// - genex.S:handle_sys_wrap
-// - 在 arch/loongarch/kernel/scall64-64.S 定义 syscall 的处理, 和常规函数感觉其实没有什么区别
-//
-// NESTED(handle_sys_wrap, 0, sp)
-//
-// 	la.abs	t0, handle_sys
-// 	jirl    zero, t0, 0
-// 	END(handle_sys_wrap)
-//
-// 秒啊，现在这些东西都可以搞定了:
-// syscall 的参数和返回值 ? 从 glibc 中间拷贝吧!
-// /home/maritns3/core/loongson-dune/la-glibc/sysdeps/unix/sysv/linux/loongarch/clone.S
-// 
-// TODO 从 arch/loongarch/kernel/genex.S 看，根本区分不了 la 和 la.abs
-// 从 arch/loongarch/kernel/head.S 看，可以使用 dli 
-//
-// 至少 li 还是存在的, 
 
 #define INIT_VALUE_STLBPS 0xe
 #define INIT_VALUE_PWCTL0 0x5e56e
