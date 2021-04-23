@@ -136,41 +136,55 @@ static void kvm_enable_fpu(struct kvm_cpu *cpu)
 	// 从 kvm_vcpu_ioctl_enable_cap 可以看到不需要手动打开 lasx
 }
 
-/**
 static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
-        const struct mips_fpu_struct *fpu_regs,
+        const struct loongarch_fpu_struct *fpu_regs,
         enum ACCESS_OP op)
 {
   struct kvm_one_reg reg;
 
   for (int i = 0; i < NUM_FPU_REGS; ++i) {
-    reg.id = KVM_REG_MIPS_VEC_256(i);
+    reg.id = KVM_REG_LOONGARCH_VEC_256(i);
     reg.addr = (u64) & (fpu_regs->fpr[i]);
     kvm_access_reg(cpu, &reg, op);
   }
 
-  reg.id = KVM_REG_MIPS_FCR_CSR;
-  reg.addr = (u64) & (fpu_regs->fcr31);
+  reg.id = KVM_REG_LOONGARCH_FCR_CSR;
+  reg.addr = (u64) & (fpu_regs->fcsr);
   kvm_access_reg(cpu, &reg, op);
 
-  reg.id = KVM_REG_MIPS_MSA_CSR;
-  reg.addr = (u64) & (fpu_regs->msacsr);
+  reg.id = KVM_REG_LOONGARCH_VCSR;
+  reg.addr = (u64) & (fpu_regs->vcsr);
+  kvm_access_reg(cpu, &reg, op);
+
+  // MIPS 中只是设置了两个数值 FCR_CSR 和 VCSR
+  reg.id = KVM_REG_LOONGARCH_FCCR;
+  reg.addr = (u64) & (fpu_regs->fcc);
   kvm_access_reg(cpu, &reg, op);
 }
 
 static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
-           const struct mips_fpu_struct *fpu_regs)
+           const struct loongarch_fpu_struct *fpu_regs)
 {
   kvm_access_fpu_regs(cpu, fpu_regs, GET);
 }
 
 static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
-           const struct mips_fpu_struct *fpu_regs)
+           const struct loongarch_fpu_struct *fpu_regs)
 {
   kvm_access_fpu_regs(cpu, fpu_regs, SET);
 }
 
-*/
+void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
+{
+	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(parent_cpu->info.regs)) <
+	    0)
+		die("KVM_GET_REGS");
+
+	parent_cpu->info.era =
+		kvm_get_csr_reg(parent_cpu, KVM_LOONGARCH_CSR_EPC);
+
+	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
+}
 
 static void init_fpu(struct kvm_cpu *cpu)
 {
@@ -181,25 +195,17 @@ static void init_fpu(struct kvm_cpu *cpu)
 	extern void get_fpu_regs(struct loongarch_fpu_struct *);
 	get_fpu_regs(&fpu_regs);
 
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcsr) == 0);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, vcsr) == 4);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcc) == 8);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcsr) == VCPU_FCSR0);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, vcsr) == VCPU_VCSR);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcc) == VCPU_FCC);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[0]) == VCPU_FPR0);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[31]) == VCPU_FPR0 + 31 * VCPU_FPR_LEN);
 
-	// TODO
-	// kvm_set_fpu_regs(cpu, &fpu_regs);
+  kvm_set_fpu_regs(cpu, &fpu_regs);
 }
 
 static void init_ebase(struct kvm_cpu *cpu)
 {
-	// 6.2.1
-	// CSR.TLBRENTRY
-	// CSR.MERRENTRY
-	// CSR.EENTRY
-	//
-	// 可以利用 save 寄存器是曾经的 scratch 寄存器
-	//
-	// 中断信号被采样到 CSR.ESTA.IS 和 CSR.ECFG.LIE, 得到 13 bit 的中断向量
-
 	BUILD_ASSERT(512 == VEC_SIZE);
 	BUILD_ASSERT(INT_OFFSET * VEC_SIZE == PAGESIZE * 2);
 	BUILD_ASSERT(VEC_SIZE * 14 < PAGESIZE);

@@ -108,13 +108,47 @@ ENTRY (save_fpu_regs)
 	bstrins.d	t1, t0, 0x37, 0x30
 	movcf2gr	t0, $fcc7
 	bstrins.d	t1, t0, 0x3f, 0x38
-
 	st.d	t1, a0, VCPU_FCC
 	movgr2fcsr	fcsr0, zero
 
 	movfcsr2gr	t0, $r16
 	st.w	t0, a0, VCPU_VCSR
-	movgr2fcsr	$r16, zero
+
+  // TODO 感觉这个东西并不会正常编译啊
+	li              t0, THREAD_FPR0
+	add.d t0,       a0, t0
+	.word (0xb3 << 22 | ((0 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 0)
+	.word (0xb3 << 22 | ((1 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 1)
+	.word (0xb3 << 22 | ((2 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 2)
+	.word (0xb3 << 22 | ((3 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 3)
+	.word (0xb3 << 22 | ((4 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 4)
+	.word (0xb3 << 22 | ((5 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 5)
+	.word (0xb3 << 22 | ((6 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 6)
+	.word (0xb3 << 22 | ((7 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 7)
+	.word (0xb3 << 22 | ((8 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 8)
+	.word (0xb3 << 22 | ((9 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 9)
+	.word (0xb3 << 22 | ((10* VCPU_FPR_LEN) << 10) | t0 << 5 | 10)
+	.word (0xb3 << 22 | ((11* VCPU_FPR_LEN) << 10) | t0 << 5 | 11)
+	.word (0xb3 << 22 | ((12* VCPU_FPR_LEN) << 10) | t0 << 5 | 12)
+	.word (0xb3 << 22 | ((13* VCPU_FPR_LEN) << 10) | t0 << 5 | 13)
+	.word (0xb3 << 22 | ((14* VCPU_FPR_LEN) << 10) | t0 << 5 | 14)
+	.word (0xb3 << 22 | ((15* VCPU_FPR_LEN) << 10) | t0 << 5 | 15)
+	.word (0xb3 << 22 | ((16* VCPU_FPR_LEN) << 10) | t0 << 5 | 16)
+	.word (0xb3 << 22 | ((17* VCPU_FPR_LEN) << 10) | t0 << 5 | 17)
+	.word (0xb3 << 22 | ((18* VCPU_FPR_LEN) << 10) | t0 << 5 | 18)
+	.word (0xb3 << 22 | ((19* VCPU_FPR_LEN) << 10) | t0 << 5 | 19)
+	.word (0xb3 << 22 | ((20* VCPU_FPR_LEN) << 10) | t0 << 5 | 20)
+	.word (0xb3 << 22 | ((21* VCPU_FPR_LEN) << 10) | t0 << 5 | 21)
+	.word (0xb3 << 22 | ((22* VCPU_FPR_LEN) << 10) | t0 << 5 | 22)
+	.word (0xb3 << 22 | ((23* VCPU_FPR_LEN) << 10) | t0 << 5 | 23)
+	.word (0xb3 << 22 | ((24* VCPU_FPR_LEN) << 10) | t0 << 5 | 24)
+	.word (0xb3 << 22 | ((25* VCPU_FPR_LEN) << 10) | t0 << 5 | 25)
+	.word (0xb3 << 22 | ((26* VCPU_FPR_LEN) << 10) | t0 << 5 | 26)
+	.word (0xb3 << 22 | ((27* VCPU_FPR_LEN) << 10) | t0 << 5 | 27)
+	.word (0xb3 << 22 | ((28* VCPU_FPR_LEN) << 10) | t0 << 5 | 28)
+	.word (0xb3 << 22 | ((29* VCPU_FPR_LEN) << 10) | t0 << 5 | 29)
+	.word (0xb3 << 22 | ((30* VCPU_FPR_LEN) << 10) | t0 << 5 | 30)
+	.word (0xb3 << 22 | ((31* VCPU_FPR_LEN) << 10) | t0 << 5 | 31)
 
   jirl zero, ra, 0
 END (int_fpu_regs)

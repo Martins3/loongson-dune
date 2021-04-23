@@ -286,18 +286,6 @@
 #define fcsr1	$r1
 #define fcsr2	$r2
 #define fcsr3	$r3
-#define vcsr16	$r16
-
-// TODO " 和 STR 之间的空格怎么办 ?
-#define read_fcsr(source)	\
-({	\
-	unsigned int __res;	\
-\
-	__asm__ __volatile__(	\
-	"	movfcsr2gr	%0, " STR(source)"	\n"	\
-	: "=r" (__res));	\
-	__res;	\
-})
 
 // copied from arch/loongarch/include/asm/regdef.h
 #define zero $r0 /* wired zero */
@@ -552,5 +540,8 @@ symbol:
 #define VCPU_FCSR0 0
 #define VCPU_VCSR 4
 #define VCPU_FCC 8
+#define VCPU_FPR0 16
+#define VCPU_FPR_LEN 32
+
 
 #endif /* end of include guard: INTERNAL_H_6IUWCEFP */
