@@ -98,50 +98,96 @@ static void kvm_set_csr_reg(const struct kvm_cpu *cpu, u64 id, u64 v)
 	kvm_access_csr_reg(cpu, id, SET, v);
 }
 
-// static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
-				// const struct mips_fpu_struct *fpu_regs,
-				// enum ACCESS_OP op)
-// {
-	// struct kvm_one_reg reg;
-//
-	// for (int i = 0; i < NUM_FPU_REGS; ++i) {
-		// reg.id = KVM_REG_MIPS_VEC_256(i);
-		// reg.addr = (u64) & (fpu_regs->fpr[i]);
-		// kvm_access_reg(cpu, &reg, op);
-	// }
-//
-	// reg.id = KVM_REG_MIPS_FCR_CSR;
-	// reg.addr = (u64) & (fpu_regs->fcr31);
-	// kvm_access_reg(cpu, &reg, op);
-//
-	// reg.id = KVM_REG_MIPS_MSA_CSR;
-	// reg.addr = (u64) & (fpu_regs->msacsr);
-	// kvm_access_reg(cpu, &reg, op);
-// }
-//
-// static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
-					 // const struct mips_fpu_struct *fpu_regs)
-// {
-	// kvm_access_fpu_regs(cpu, fpu_regs, GET);
-// }
-//
-// static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
-					 // const struct mips_fpu_struct *fpu_regs)
-// {
-	// kvm_access_fpu_regs(cpu, fpu_regs, SET);
-// }
-//
-// static void init_fpu(struct kvm_cpu *cpu)
-// {
-	// kvm_enable_fpu(cpu);
-//
-	// struct mips_fpu_struct fpu_regs;
-	// get_fpu_regs(&fpu_regs);
-	// get_fcsr(&fpu_regs.fcr31);
-	// get_msacsr(&fpu_regs.msacsr);
-//
+/*
+
+1. 三种寄存器还是保持重叠的
+2. 一共 32 个
+- [ ] 如何 enable fpu
+- [ ] 保存和设置 ?
+/home/maritns3/core/loongson-dune/la-4.19/arch/loongarch/kvm/fpu.S
+- [ ] lasx lsx fpu 还是可以保存最大的哪一个吗 ?
+
+kvm_loongarch_guest_has_fpu : 
+- [ ] KVM_REG_LOONGARCH_FCR_IR / KVM_REG_LOONGARCH_FCR_CSR / KVM_REG_LOONGARCH_FCCR 的定义 ?
+
+- 3.1.3 : IR 只读, CSR : 浮点 eflags, FCCR : 控制寄存器 
+
+- [ ] lsx 和 lasx 是否存在对应的控制器 ?
+- [ ] KVM_REG_LOONGARCH_VIR
+
+KVM_REG_LOONGARCH_VCSR
+*/
+
+static void kvm_enable_fpu(struct kvm_cpu *cpu)
+{
+	struct kvm_enable_cap cap;
+	memset(&cap, 0, sizeof(cap));
+	cap.cap = KVM_CAP_LOONGARCH_FPU;
+
+	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
+		die("Unable enable fpu in guest");
+	}
+
+	cap.cap = KVM_CAP_LOONGARCH_LSX;
+	if (ioctl(cpu->vcpu_fd, KVM_ENABLE_CAP, &cap) < 0) {
+		die("Unable enable msa in guest");
+	}
+
+	// 从 kvm_vcpu_ioctl_enable_cap 可以看到不需要手动打开 lasx
+}
+
+/**
+static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
+        const struct mips_fpu_struct *fpu_regs,
+        enum ACCESS_OP op)
+{
+  struct kvm_one_reg reg;
+
+  for (int i = 0; i < NUM_FPU_REGS; ++i) {
+    reg.id = KVM_REG_MIPS_VEC_256(i);
+    reg.addr = (u64) & (fpu_regs->fpr[i]);
+    kvm_access_reg(cpu, &reg, op);
+  }
+
+  reg.id = KVM_REG_MIPS_FCR_CSR;
+  reg.addr = (u64) & (fpu_regs->fcr31);
+  kvm_access_reg(cpu, &reg, op);
+
+  reg.id = KVM_REG_MIPS_MSA_CSR;
+  reg.addr = (u64) & (fpu_regs->msacsr);
+  kvm_access_reg(cpu, &reg, op);
+}
+
+static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
+           const struct mips_fpu_struct *fpu_regs)
+{
+  kvm_access_fpu_regs(cpu, fpu_regs, GET);
+}
+
+static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
+           const struct mips_fpu_struct *fpu_regs)
+{
+  kvm_access_fpu_regs(cpu, fpu_regs, SET);
+}
+
+*/
+
+static void init_fpu(struct kvm_cpu *cpu)
+{
+	kvm_enable_fpu(cpu);
+
+	struct loongarch_fpu_struct fpu_regs;
+
+	extern void get_fpu_regs(struct loongarch_fpu_struct *);
+	get_fpu_regs(&fpu_regs);
+
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcsr) == 0);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, vcsr) == 4);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcc) == 8);
+
+	// TODO
 	// kvm_set_fpu_regs(cpu, &fpu_regs);
-// }
+}
 
 static void init_ebase(struct kvm_cpu *cpu)
 {
@@ -448,10 +494,9 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		 "st.d $r30, $r5, 240\n\t"
 		 "st.d $r31, $r5, 248\n\t"
 
-		 "beqz $r6, %l[guest_entry]\n\t"
-		 "pcaddi $r8, 0\n\t"
-		 "st.d $r8, $r5, 256\n\t"
-		 "ld.d $r8, $r5, 64\n\t" // restore $8
+		 "la.local $r6, %l[guest_entry]\n\t"
+		 "st.d $r6, $r5, 256\n\t"
+		 "ld.d $r6, $r5, 64\n\t" // restore $6
 		 :
 		 :
 		 : "memory"
@@ -462,13 +507,13 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 
 	init_ebase(cpu);
 	init_csr(cpu);
-	// init_fpu(cpu);
+	// init_fpu(cpu); // TODO
 
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0) {
 		die("KVM_SET_REGS failed");
 	}
 
-	// TODO vacate_current_stack(cpu);
+	vacate_current_stack(cpu);
 	die("host never reach here\n");
 guest_entry:
 	// return expression is needed by guest_entry, otherwise gcc inline asm would
@@ -567,8 +612,6 @@ bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 }
 #endif
 
-
-
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 {
 	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(parent_cpu->info.regs)) <
@@ -578,11 +621,10 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	parent_cpu->info.era =
 		kvm_get_csr_reg(parent_cpu, KVM_LOONGARCH_CSR_EPC);
 
-  // TODO
+	// TODO
 	// kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
-// TODO 再次检查一次参数偏移, 感觉很别扭
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
 {
@@ -591,21 +633,21 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 
 	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
 
-  // #define v0 $r4
-  child_regs.gpr[4] = 0;
-  // see arch/loongarch/kvm/loongisa.c:kvm_arch_vcpu_ioctl_run
+	// #define v0 $r4
+	child_regs.gpr[4] = 0;
+	// see arch/loongarch/kvm/loongisa.c:kvm_arch_vcpu_ioctl_run
 	child_cpu->kvm_run->hypercall.ret = child_regs.gpr[4];
 
 	if (parent_cpu->syscall_parameter[0] | CLONE_SETTLS) {
-    child_regs.gpr[2] = parent_cpu->syscall_parameter[4];
+		child_regs.gpr[2] = parent_cpu->syscall_parameter[4];
 	}
 
-  // #define a1 $r5
-  child_regs.gpr[5] = (u64)child_cpu;
+	// #define a1 $r5
+	child_regs.gpr[5] = (u64)child_cpu;
 
 	if (sysno == SYS_CLONE) {
 		// see linux kernel fork.c:copy_thread
-    // #define sp $r3
+		// #define sp $r3
 		if (parent_cpu->syscall_parameter[1] != 0)
 			child_regs.gpr[3] = parent_cpu->syscall_parameter[1];
 	} else if (sysno == SYS_CLONE3) {
@@ -617,9 +659,9 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die("KVM_SET_REGS");
 
-  // TODO
+	// TODO
 	// dup_fpu(child_cpu, &parent_cpu->info.fpu);
-  init_csr(child_cpu);
+	init_csr(child_cpu);
 }
 
 void arch_set_thread_area(struct kvm_cpu *vcpu)

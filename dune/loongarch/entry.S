@@ -66,9 +66,13 @@ switch_stack:
 	move sp, a1
 	b host_loop /* host_loop 绝对不会返回 */
 
+// 不存在 ret 指令
+// 从 arch/loongarch/include/asm/stackframe.h 看
+// 调用 syscall 之后, ra, sp, fp 和参数都会保存下来
+
 /* copied from /sysdeps/unix/sysv/linux/loongarch/clone.S */
 // 参考 emulate_fork_by_two_vcpu 中在 stack 上设置的参数
-ENTRY (__clone)
+ENTRY (__do_simulate_clone)
 	/* Do the system call.  */
 	dli	a7,__NR_clone
 	syscall	0
@@ -76,7 +80,7 @@ ENTRY (__clone)
 	beqz	a0,L (child)
 
 	/* Successful return from the parent.  */
-	ret
+  jirl zero, ra, 0
 
 L (child):
   /* t0 是 __SYSCALL_CLOBBERS 寄存器，可以随意修改 */
@@ -84,3 +88,33 @@ L (child):
   b host_loop
 END (__do_simulate_clone)
 
+ENTRY (save_fpu_regs)
+	movfcsr2gr	t0, fcsr0
+	st.w t0,	a0, VCPU_FCSR0
+
+	movcf2gr	t0, $fcc0
+	or	t1, t0, zero
+	movcf2gr	t0, $fcc1
+	bstrins.d	t1, t0, 0xf, 0x8
+	movcf2gr	t0, $fcc2
+	bstrins.d	t1, t0, 0x17, 0x10
+	movcf2gr	t0, $fcc3
+	bstrins.d	t1, t0, 0x1f, 0x18
+	movcf2gr	t0, $fcc4
+	bstrins.d	t1, t0, 0x27, 0x20
+	movcf2gr	t0, $fcc5
+	bstrins.d	t1, t0, 0x2f, 0x28
+	movcf2gr	t0, $fcc6
+	bstrins.d	t1, t0, 0x37, 0x30
+	movcf2gr	t0, $fcc7
+	bstrins.d	t1, t0, 0x3f, 0x38
+
+	st.d	t1, a0, VCPU_FCC
+	movgr2fcsr	fcsr0, zero
+
+	movfcsr2gr	t0, $r16
+	st.w	t0, a0, VCPU_VCSR
+	movgr2fcsr	$r16, zero
+
+  jirl zero, ra, 0
+END (int_fpu_regs)

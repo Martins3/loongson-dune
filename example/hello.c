@@ -1,15 +1,13 @@
 #include <stdio.h>
 
 
-void asm_test(long long int x);
+long long int asm_test(long long int x);
 
 
 int main(int argc, char *argv[])
 {
-  // dune_enter();
-  
-  asm_test(0x123456789abcdef);
-  
+  long long int x = asm_test(0x123456789abcdef);
+  printf("%llx", x);
   return 0;
 }
 

@@ -270,7 +270,34 @@
 
 /* Percpu allocated KS4 */
 #define PERCPU_KS4			LOONGARCH_CSR_KS4
-// host 内核会静态的使用这些数值
+
+/*
+ * The following macros are especially useful for __asm__
+ * inline assembler.
+ */
+#ifndef __STR
+#define __STR(x) #x
+#endif
+#ifndef STR
+#define STR(x) __STR(x)
+#endif
+
+#define fcsr0	$r0
+#define fcsr1	$r1
+#define fcsr2	$r2
+#define fcsr3	$r3
+#define vcsr16	$r16
+
+// TODO " 和 STR 之间的空格怎么办 ?
+#define read_fcsr(source)	\
+({	\
+	unsigned int __res;	\
+\
+	__asm__ __volatile__(	\
+	"	movfcsr2gr	%0, " STR(source)"	\n"	\
+	: "=r" (__res));	\
+	__res;	\
+})
 
 // copied from arch/loongarch/include/asm/regdef.h
 #define zero $r0 /* wired zero */
@@ -315,20 +342,13 @@
 //
 // (64 + 14) * vec_size
 #define CSR_ECFG_VS_SHIFT 16
-#define INST_SZ 4
+#define INSTRUCTION_SIZE 4
 #define INT_OFFSET 64
 #define VEC_SIZE                                                               \
-	(1 << (INIT_VALUE_ECFG >> CSR_ECFG_VS_SHIFT)) * INST_SZ
+	(1 << (INIT_VALUE_ECFG >> CSR_ECFG_VS_SHIFT)) * INSTRUCTION_SIZE
 #define ERREBASE_OFFSET (PAGESIZE * 3)
 
 #define EXCCODE_SYS 11 /* System call */
-
-#define REG_SZ 8
-
-
-// TODO 增加内核调试信息，当 hyerpcall 不是 syscall 的源头的时候
-// 一次性产生所有的数值，当 hypercall 是，打印所有的常规寄存器
-// 在 hypercall 的位置
 
 #define CSR_TLBRELO_RPLV_SHIFT 63
 #define CSR_TLBRELO_RPLV (_ULCAST_(0x1) << CSR_TLBRELO_RPLV_SHIFT)
@@ -484,7 +504,8 @@
 #define INIT_VALUE_PWCTL1 0x2e4
 
 // 可以看看内核中间 LOONGARCH_CSR_TMID 的 reference
-// FIXME 感觉内核中间把 timerid 当做 CPUID 来使用了
+// TODO 感觉内核中间把 timerid 当做 CPUID 来使用了
+// 为什么要这样设计 ?
 //
 // 在现在的任务中间:
 // kvm_vz_vcpu_setup 将 timerid 初始化为 `vcpu->vcpu_id`
@@ -511,25 +532,25 @@
 #define UNIMP_ERROR .word(0x00298000 | (0x5))
 #define HYPERCALL .word 0x00298000
 
-// copied from la-glibc/sysdeps/loongarch/sys/asm.h
-/* Declare leaf routine.  */
-#define	LEAF(symbol)			\
-	.text;				\
-	.globl	symbol;			\
-	.align	3;			\
-	cfi_startproc ;			\
-	.type	symbol, @function;	\
+// 从 arch/loongarch/include/asm/asm.h 看，
+// 终于取消掉了 LEAF 和 NESTED 的含义
+/*
+ * LEAF - declare leaf routine
+ */
+#define ENTRY(symbol)					\
+		.globl	symbol;				\
+		.align	2;				\
+		.type	symbol, @function;		\
 symbol:
 
-# define ENTRY(symbol) LEAF(symbol)
+/*
+ * END - mark end of function
+ */
+#define END(function)					\
+		.size	function, .-function
 
-/* Mark end of function.  */
-#undef END
-#define END(function)			\
-	cfi_endproc ;			\
-	.size	function,.-function;
-
-/* Stack alignment.  */
-#define ALMASK	~15
+#define VCPU_FCSR0 0
+#define VCPU_VCSR 4
+#define VCPU_FCC 8
 
 #endif /* end of include guard: INTERNAL_H_6IUWCEFP */
