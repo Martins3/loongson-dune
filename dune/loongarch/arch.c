@@ -98,26 +98,6 @@ static void kvm_set_csr_reg(const struct kvm_cpu *cpu, u64 id, u64 v)
 	kvm_access_csr_reg(cpu, id, SET, v);
 }
 
-/*
-
-1. 三种寄存器还是保持重叠的
-2. 一共 32 个
-- [ ] 如何 enable fpu
-- [ ] 保存和设置 ?
-/home/maritns3/core/loongson-dune/la-4.19/arch/loongarch/kvm/fpu.S
-- [ ] lasx lsx fpu 还是可以保存最大的哪一个吗 ?
-
-kvm_loongarch_guest_has_fpu : 
-- [ ] KVM_REG_LOONGARCH_FCR_IR / KVM_REG_LOONGARCH_FCR_CSR / KVM_REG_LOONGARCH_FCCR 的定义 ?
-
-- 3.1.3 : IR 只读, CSR : 浮点 eflags, FCCR : 控制寄存器 
-
-- [ ] lsx 和 lasx 是否存在对应的控制器 ?
-- [ ] KVM_REG_LOONGARCH_VIR
-
-KVM_REG_LOONGARCH_VCSR
-*/
-
 static void kvm_enable_fpu(struct kvm_cpu *cpu)
 {
 	struct kvm_enable_cap cap;
@@ -137,41 +117,48 @@ static void kvm_enable_fpu(struct kvm_cpu *cpu)
 }
 
 static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
-        const struct loongarch_fpu_struct *fpu_regs,
-        enum ACCESS_OP op)
+				const struct loongarch_fpu_struct *fpu_regs,
+				enum ACCESS_OP op)
 {
-  struct kvm_one_reg reg;
+	struct kvm_one_reg reg;
 
-  for (int i = 0; i < NUM_FPU_REGS; ++i) {
-    reg.id = KVM_REG_LOONGARCH_VEC_256(i);
-    reg.addr = (u64) & (fpu_regs->fpr[i]);
-    kvm_access_reg(cpu, &reg, op);
-  }
+	for (int i = 0; i < NUM_FPU_REGS; ++i) {
+		reg.id = KVM_REG_LOONGARCH_VEC_256(i);
+		reg.addr = (u64) & (fpu_regs->fpr[i]);
+		kvm_access_reg(cpu, &reg, op);
+	}
 
-  reg.id = KVM_REG_LOONGARCH_FCR_CSR;
-  reg.addr = (u64) & (fpu_regs->fcsr);
-  kvm_access_reg(cpu, &reg, op);
+	reg.id = KVM_REG_LOONGARCH_FCR_CSR;
+	reg.addr = (u64) & (fpu_regs->fcsr);
+	kvm_access_reg(cpu, &reg, op);
 
-  reg.id = KVM_REG_LOONGARCH_VCSR;
-  reg.addr = (u64) & (fpu_regs->vcsr);
-  kvm_access_reg(cpu, &reg, op);
+	reg.id = KVM_REG_LOONGARCH_VCSR;
+	reg.addr = (u64) & (fpu_regs->vcsr);
+	kvm_access_reg(cpu, &reg, op);
 
-  // MIPS 中只是设置了两个数值 FCR_CSR 和 VCSR
-  reg.id = KVM_REG_LOONGARCH_FCCR;
-  reg.addr = (u64) & (fpu_regs->fcc);
-  kvm_access_reg(cpu, &reg, op);
+	// MIPS 中只是设置了两个数值 FCR_CSR 和 VCSR
+	reg.id = KVM_REG_LOONGARCH_FCCR;
+	reg.addr = (u64) & (fpu_regs->fcc);
+	kvm_access_reg(cpu, &reg, op);
 }
 
 static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
-           const struct loongarch_fpu_struct *fpu_regs)
+			     const struct loongarch_fpu_struct *fpu_regs)
 {
-  kvm_access_fpu_regs(cpu, fpu_regs, GET);
+	kvm_access_fpu_regs(cpu, fpu_regs, GET);
 }
 
 static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
-           const struct loongarch_fpu_struct *fpu_regs)
+			     const struct loongarch_fpu_struct *fpu_regs)
 {
-  kvm_access_fpu_regs(cpu, fpu_regs, SET);
+	kvm_access_fpu_regs(cpu, fpu_regs, SET);
+}
+
+static void dup_fpu(struct kvm_cpu *child_cpu,
+		    const struct loongarch_fpu_struct *parent_fpu)
+{
+	kvm_enable_fpu(child_cpu);
+	kvm_set_fpu_regs(child_cpu, parent_fpu);
 }
 
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
@@ -198,10 +185,12 @@ static void init_fpu(struct kvm_cpu *cpu)
 	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcsr) == VCPU_FCSR0);
 	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, vcsr) == VCPU_VCSR);
 	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcc) == VCPU_FCC);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[0]) == VCPU_FPR0);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[31]) == VCPU_FPR0 + 31 * VCPU_FPR_LEN);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[0]) ==
+		     VCPU_FPR0);
+	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[31]) ==
+		     VCPU_FPR0 + 31 * VCPU_FPR_LEN);
 
-  kvm_set_fpu_regs(cpu, &fpu_regs);
+	kvm_set_fpu_regs(cpu, &fpu_regs);
 }
 
 static void init_ebase(struct kvm_cpu *cpu)
@@ -254,24 +243,13 @@ static void init_csr(struct kvm_cpu *cpu)
 	u64 INIT_VALUE_KSCRATCH6 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
 	u64 INIT_VALUE_KSCRATCH7 = TLBRELO0_STANDARD_BITS;
 	u64 INIT_VALUE_KSCRATCH8 = TLBRELO1_STANDARD_BITS;
-
 	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
 	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
 
 	u64 INIT_VALUE_CPUNUM = cpu->cpu_id;
-
+	// FIXME 从手册和内核上，都是 tid 代替 cpuid 的感觉，kvm 中将会将 tid 初始化为 cpu->cpu_id
 	u64 INIT_VALUE_ERREBASE = (u64)cpu->info.ebase + ERREBASE_OFFSET;
 
-	// 在 arch/loongarch/include/asm/loongarchregs.h
-	// 中间定义了一堆 IOCSR 寄存器，实际上完全不知道如何使用
-	// - [x] 如果不正确设置 IOCSR，其影响是什么?
-	//  - 这个外设本身就不是我们管理的
-	// - [x] LOONGARCH_CSR_TMID 和 LOONGARCH_IOCSR_TIMER_CFG 的关系是什么?
-	//  - 应该是 node 的时钟 和 本地时钟的关系吧
-	//
-	// IOCSR 只是用于各种地址空间的。
-
-	u64 gg = KVM_CSR_CRMD;
 	struct csr_reg one_regs[] = {
 		CSR_INIT_REG(CRMD),
 		// CSR_INIT_REG(PRMD),
@@ -285,103 +263,18 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(TLBHI),
 		// CSR_INIT_REG(TLBLO0),
 		// CSR_INIT_REG(TLBLO1),
-		//
-		// CSR_INIT_REG(GTLBC), gcsr
-		// CSR_INIT_REG(TRGP),  gcsr
-		//
-		// 实际上，基本相同:
-		// 进行 gpa 到 gpa 之间的映射，一致都是 kvm 在维护的
-		// kvm->arch.gpa_mm.pgd
-		// 实际上，根本找不到在什么地方进行了 TLB refill 的分析
-		//
-		//
-		// 检查 kvm 的源代码，分析是如何处理 inctl 的, 中断直接到达的，还是 ?
-		// 在内核中间搜索 ginct 的
-		// 1. 设置 KVM_CSR_ESTAT 的作用:
-		//
-		// 合乎逻辑
-		// case KVM_CSR_ESTAT:
-		// write_gcsr_estat(v);
-		// write_csr_gintc((v & 0x3fc) >> 2);
-		//
-		// 2. 在 vcpu_load 和 vcpu_set 的时候存在一些作用
-		//  - kvm_loongarch_deliver_interrupts
-		//
-		// 分析完成 kvm_loongarch_deliver_interrupts 的调用之后,
-		// 目前的 kvm 实际上并没有用上这些的高级功能，只是可以通过 ioctl 将中断注入到
-		// 其中的方法。
-		//
-		// 重新阅读 entry.S 的代码 : 一些汇编，比以前的代码算是清晰很多了
-		//
-		// 和 VMM 相关的例外 : TLB refill 以及各种类型的
-		// 手册中间，描述 vm exit 的种类 ? 1.3
-		//
-		// load / store 监视
-		// 暂时和虚拟化是没有什么关系的，只是当存在虚拟机的时候需要
-		// 难道 guest 中间无法使用 load / store 监视吗? (可以的
-		// 如何初始化 load / store 监视点之类寄存器(因为现在不需要进行初始化，所以直接 disable 处理就可以了
-		//
-		// 监视点例外 : 的确是在列表中间
-		//
-		// TRGP 的作用
-		// TLBRD : 是根据 Index 获取 TLB 的信息，所以不一定知道自己到底在哪一个位置
-		// 根据虚拟地址获取的 TLBSRCH 指令
-		//
-		// 1.4.4 / 1.4.5 软中断 和 硬中断的描述
-		// 关闭硬件的所有方式
-		// HWIC : 用 host 的硬件撤销清除 Guest 中断
-		// HWIP : 直接相连
-		// HWIS : 中断注入
-		// 其实就是中断可以直接注入，也可以完全转发，或者部分转发
-		//
-		// 软中断的控制比较简单了
-		//
-		// 控制了 guest 使用 TLB 的数量?
-		// 在逻辑上是怎么操作的，TLBFILL 和 INDEX 可以选中的范围吗 ?
-		// 对于软件层的影响是什么 ?
-		// 实际上，在软件层次，这没有任何的影响，kvm 的代码没有任何的检查。
-		//
-		// STLB 和 MTLB 的共享
-		// - [x] 如果在 guest 中间设置的 STB 的 size 和 host 不同, 两者还可以共享吗?(是的，所以保证 STLBSZ 相同)
-		// - [x] GID 的使用逻辑 1.2.3 中描述
-		// - [x] VMM page : gpa 到 hpa 映射也是放到 TLB 中间的
-		//
-		// 问题是靠什么区分 VMM page 和 host page 的 TLB
-		// - gpa 和 hva 的作为索引根本无法区分两者
-		// - 查看内核的代码?
-		// - 猜测在 guest mode 中间，当进行使用 Host 的, TLB refill 是自动的，并且自动使用 pgd.mm 的内容
-		//
-		// 1.2.2 中间说明, 非常的模糊, 莫名奇妙
-		// - [x] PGDL 和 PGDH 的符号扩展?
-		// - [x] 什么叫做 PGDH 和 GPDL 只有一套，所以其内容是相同的(什么垃圾文档
-		//
-		// 检查一下虚拟地址空间的范围是什么 ? 不用看，肯定没有问题的
-		// - [x] 内核的代码的检查
-		// - [x] 内核模块检查一下
-		//
-		// LONG_L	\tmp, \tmp1, VM_GPGD
-		// csrwr	\tmp, LOONGARCH_CSR_PGDL
-		//
-		// GTLBC 在控制 Host 的 Guest ID 的取值
-		//
-		// 为什么 TLBRPRMD 中间含有 PGM，但是在 PRMD 中间没有
-		// 1.7.1 : 这个记录了之前是否是客户机，如果是，那么就执行 eret 恢复客户机的状态
-		// 当 eret 的时候，硬件用于区分当前是否在 Host 的状态 还是 Guest 的
-		//
-		// 在一般的状态，GSTAT 的 PGM 中间了保存了应该有的信息。
-		//
-		// GSTAT::GID 和 GTLBC::TGID :
-		// 1. 一个是设置给虚拟机的 GID
-		// 2. 一个是如果，想要进行控制虚拟机的 TLB, 那么需要提前设置该数值
-		//
+		// CSR_INIT_REG(GTLBC),
+		// CSR_INIT_REG(TRGP),
 		// CSR_INIT_REG(ASID),
 		// CSR_INIT_REG(PGDL),
 		// CSR_INIT_REG(PGDH),
 		// CSR_INIT_REG(PGD),
 		CSR_INIT_REG(PWCTL0), CSR_INIT_REG(PWCTL1),
 		CSR_INIT_REG(STLBPS), CSR_INIT_REG(RVACFG),
-		CSR_INIT_REG(CPUNUM), CSR_INIT_REG(PRCFG1),
-		CSR_INIT_REG(PRCFG2), CSR_INIT_REG(PRCFG3),
+		CSR_INIT_REG(CPUNUM),
+		// CSR_INIT_REG(PRCFG1),
+		// CSR_INIT_REG(PRCFG2),
+		// CSR_INIT_REG(PRCFG3),
 		// CSR_INIT_REG(KSCRATCH0),
 		// CSR_INIT_REG(KSCRATCH1),
 		// CSR_INIT_REG(KSCRATCH2),
@@ -391,6 +284,8 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(KSCRATCH6),
 		CSR_INIT_REG(KSCRATCH7), CSR_INIT_REG(KSCRATCH8),
 		// CSR_INIT_REG(TIMERID), // kvm 会初始化
+		// 从 kvm_vz_queue_timer_int_cb 看，disable 掉 TIMERCFG::EN 的确可以不被注入
+		// 时钟中断
 		CSR_INIT_REG(TIMERCFG),
 		// CSR_INIT_REG(TIMERTICK),
 		// CSR_INIT_REG(TIMEROFFSET),
@@ -398,7 +293,8 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(GCFG),  gcsr
 		// CSR_INIT_REG(GINTC), gcsr
 		// CSR_INIT_REG(GCNTC), gcsr
-		CSR_INIT_REG(LLBCTL), CSR_INIT_REG(IMPCTL1),
+		CSR_INIT_REG(LLBCTL),
+		// CSR_INIT_REG(IMPCTL1),
 		// CSR_INIT_REG(IMPCTL2),
 		// CSR_INIT_REG(GNMI),
 		CSR_INIT_REG(TLBREBASE),
@@ -409,19 +305,22 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(TLBRELO1),
 		// CSR_INIT_REG(TLBREHI),
 		// CSR_INIT_REG(TLBRPRMD),
-		CSR_INIT_REG(ERRCTL),
+		// 按照现在的涉及，guest 中间不应该出现 merr
+		// CSR_INIT_REG(ERRCTL),
 		// CSR_INIT_REG(ERRINFO1),
 		// CSR_INIT_REG(ERRINFO2),
-		CSR_INIT_REG(ERREBASE),
+		// CSR_INIT_REG(ERREBASE),
 		// CSR_INIT_REG(ERREPC),
 		// CSR_INIT_REG(ERRSAVE),
 		// CSR_INIT_REG(CTAG),
-		// 虚拟化手册 1.3.3 这都是微结构相关的寄存器，修改需要 gpsi 来处理
-		// 关于 mcsr 的具体含义，暂时也是不清楚的, host 是什么就填写什么
-		CSR_INIT_REG(MCSR0), CSR_INIT_REG(MCSR1), CSR_INIT_REG(MCSR2),
-		CSR_INIT_REG(MCSR3), CSR_INIT_REG(MCSR8), CSR_INIT_REG(MCSR9),
-		CSR_INIT_REG(MCSR10), CSR_INIT_REG(MCSR24),
-		// Uncached accelerate windows registers
+		// CSR_INIT_REG(MCSR0),
+		// CSR_INIT_REG(MCSR1),
+		// CSR_INIT_REG(MCSR2),
+		// CSR_INIT_REG(MCSR3),
+		// CSR_INIT_REG(MCSR8),
+		// CSR_INIT_REG(MCSR9),
+		// CSR_INIT_REG(MCSR10),
+		// CSR_INIT_REG(MCSR24),
 		// CSR_INIT_REG(UCWIN),
 		// CSR_INIT_REG(UCWIN0_LO),
 		// CSR_INIT_REG(UCWIN0_HI),
@@ -435,13 +334,15 @@ static void init_csr(struct kvm_cpu *cpu)
 		CSR_INIT_REG(DMWIN1),
 		// CSR_INIT_REG(DMWIN2),
 		// CSR_INIT_REG(DMWIN3),
-		CSR_INIT_REG(PERF0_EVENT),
+		// FIXME : 没有办法控制 perf 寄存器, 最后会不会导致 perf 其实默认是打开的
+		// 等到可以进入到 guest 打开试试
+		// CSR_INIT_REG(PERF0_EVENT),
 		// CSR_INIT_REG(PERF0_COUNT),
-		CSR_INIT_REG(PERF1_EVENT),
+		// CSR_INIT_REG(PERF1_EVENT),
 		// CSR_INIT_REG(PERF1_COUNT),
-		CSR_INIT_REG(PERF2_EVENT),
+		// CSR_INIT_REG(PERF2_EVENT),
 		// CSR_INIT_REG(PERF2_COUNT),
-		CSR_INIT_REG(PERF3_EVENT),
+		// CSR_INIT_REG(PERF3_EVENT),
 		// CSR_INIT_REG(PERF3_COUNT),
 		CSR_INIT_REG(DEBUG),
 		// CSR_INIT_REG(DEPC),
@@ -513,7 +414,7 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 
 	init_ebase(cpu);
 	init_csr(cpu);
-	// init_fpu(cpu); // TODO
+	init_fpu(cpu);
 
 	if (ioctl(cpu->vcpu_fd, KVM_SET_REGS, regs) < 0) {
 		die("KVM_SET_REGS failed");
@@ -529,65 +430,12 @@ guest_entry:
 
 void arch_dune_enter(struct kvm_cpu *cpu)
 {
-	BUILD_ASSERT(INIT_VALUE_PRCFG2 & (1 << TLB_PS));
-
 	struct kvm_regs regs;
 	BUILD_ASSERT(256 == offsetof(struct kvm_regs, pc));
 	kvm_launch(cpu, &regs);
 }
 
 // a7 是作为 syscall number
-
-/**
-#define INTERNAL_SYSCALL_NCS(number, err, nr, args...)                         \
-	internal_syscall##nr(number, err, args)
-
-#define internal_syscall7(number, err, arg0, arg1, arg2, arg3, arg4, arg5,     \
-			  arg6)                                                \
-	({                                                                     \
-		long int _sys_result;                                          \
-                                                                               \
-		{                                                              \
-			register long int __a7 asm("$a7") = number;            \
-			register long int __a0 asm("$a0") = (long int)(arg0);  \
-			register long int __a1 asm("$a1") = (long int)(arg1);  \
-			register long int __a2 asm("$a2") = (long int)(arg2);  \
-			register long int __a3 asm("$a3") = (long int)(arg3);  \
-			register long int __a4 asm("$a4") = (long int)(arg4);  \
-			register long int __a5 asm("$a5") = (long int)(arg5);  \
-			register long int __a6 asm("$a6") = (long int)(arg6);  \
-			__asm__ volatile("syscall	0\n\t"                       \
-					 : "+r"(__a0)                          \
-					 : "r"(__a7), "r"(__a1), "r"(__a2),    \
-					   "r"(__a3), "r"(__a4), "r"(__a5),    \
-					   "r"(__a6)                           \
-					 : __SYSCALL_CLOBBERS);                \
-			_sys_result = __a0;                                    \
-		}                                                              \
-		_sys_result;                                                   \
-	})
-
-
-# define INTERNAL_SYSCALL_ERROR_P(val, err) \
-	((unsigned long int) (val) > -4096UL)
-
-long int syscall(long int syscall_number, long int arg1, long int arg2,
-		 long int arg3, long int arg4, long int arg5, long int arg6,
-		 long int arg7)
-{
-	long int ret;
-	INTERNAL_SYSCALL_DECL(err);
-
-	ret = INTERNAL_SYSCALL_NCS(syscall_number, err, 7, arg1, arg2, arg3,
-				   arg4, arg5, arg6, arg7);
-
-	if (INTERNAL_SYSCALL_ERROR_P(ret, err))
-		return __syscall_error(ret);
-
-	return ret;
-}
-*/
-
 #define __SYSCALL_CLOBBERS                                                     \
 	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
 
@@ -617,19 +465,6 @@ bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 	return false;
 }
 #endif
-
-void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
-{
-	if (ioctl(parent_cpu->vcpu_fd, KVM_GET_REGS, &(parent_cpu->info.regs)) <
-	    0)
-		die("KVM_GET_REGS");
-
-	parent_cpu->info.era =
-		kvm_get_csr_reg(parent_cpu, KVM_LOONGARCH_CSR_EPC);
-
-	// TODO
-	// kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
-}
 
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
@@ -666,7 +501,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 		die("KVM_SET_REGS");
 
 	// TODO
-	// dup_fpu(child_cpu, &parent_cpu->info.fpu);
+	dup_fpu(child_cpu, &parent_cpu->info.fpu);
 	init_csr(child_cpu);
 }
 

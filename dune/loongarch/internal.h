@@ -218,15 +218,15 @@
 #define _ATYPE_
 #define _ATYPE32_
 #define _ATYPE64_
-#define _CONST64_(x)	x
+#define _CONST64_(x) x
 #else
-#define _ATYPE_		__PTRDIFF_TYPE__
-#define _ATYPE32_	int
-#define _ATYPE64_	__s64
+#define _ATYPE_ __PTRDIFF_TYPE__
+#define _ATYPE32_ int
+#define _ATYPE64_ __s64
 #ifdef CONFIG_64BIT
-#define _CONST64_(x)	x ## L
+#define _CONST64_(x) x##L
 #else
-#define _CONST64_(x)	x ## LL
+#define _CONST64_(x) x##LL
 #endif
 #endif
 
@@ -240,52 +240,42 @@
 #define LOONGARCH_CSR_TLBREHI 0x8e /* TLB refill entryhi */
 #define LOONGARCH_CSR_TLBRPRMD 0x8f /* TLB refill mode info */
 
-#define DMW_PABITS	48
-#define CSR_DMW1_PLV0		_CONST64_(1 << 0)
-#define CSR_DMW1_MAT		_CONST64_(1 << 4)
-#define CSR_DMW1_VSEG		_CONST64_(0x9000)
-#define CSR_DMW1_BASE		(CSR_DMW1_VSEG << DMW_PABITS)
-#define CSR_DMW1_INIT		(CSR_DMW1_BASE | CSR_DMW1_MAT | CSR_DMW1_PLV0)
+#define DMW_PABITS 48
+#define CSR_DMW1_PLV0 _CONST64_(1 << 0)
+#define CSR_DMW1_MAT _CONST64_(1 << 4)
+#define CSR_DMW1_VSEG _CONST64_(0x9000)
+#define CSR_DMW1_BASE (CSR_DMW1_VSEG << DMW_PABITS)
+#define CSR_DMW1_INIT (CSR_DMW1_BASE | CSR_DMW1_MAT | CSR_DMW1_PLV0)
 
 /* Kscratch registers */
-#define LOONGARCH_CSR_KS0		0x30
-#define LOONGARCH_CSR_KS1		0x31
-#define LOONGARCH_CSR_KS2		0x32
-#define LOONGARCH_CSR_KS3		0x33
-#define LOONGARCH_CSR_KS4		0x34
-#define LOONGARCH_CSR_KS5		0x35
-#define LOONGARCH_CSR_KS6		0x36
-#define LOONGARCH_CSR_KS7		0x37
-#define LOONGARCH_CSR_KS8		0x38
+#define LOONGARCH_CSR_KS0 0x30
+#define LOONGARCH_CSR_KS1 0x31
+#define LOONGARCH_CSR_KS2 0x32
+#define LOONGARCH_CSR_KS3 0x33
+#define LOONGARCH_CSR_KS4 0x34
+#define LOONGARCH_CSR_KS5 0x35
+#define LOONGARCH_CSR_KS6 0x36
+#define LOONGARCH_CSR_KS7 0x37
+#define LOONGARCH_CSR_KS8 0x38
 
 /* TLB exception allocated KS0 and KS1 statically */
-#define TLB_EXC_KS0			LOONGARCH_CSR_KS0
-#define TLB_EXC_KS1			LOONGARCH_CSR_KS1
-#define TLB_KSCRATCH_MASK		(1 << 0 | 1 << 1)
+#define TLB_EXC_KS0 LOONGARCH_CSR_KS0
+#define TLB_EXC_KS1 LOONGARCH_CSR_KS1
+#define TLB_KSCRATCH_MASK (1 << 0 | 1 << 1)
 
 /* KVM allocated KS2 and KS3 statically */
-#define KVM_VCPU_KS			LOONGARCH_CSR_KS2
-#define KVM_TEMP_KS			LOONGARCH_CSR_KS3
-#define KVM_KSCRATCH_MASK		(1 << 2 | 1 << 3)
+#define KVM_VCPU_KS LOONGARCH_CSR_KS2
+#define KVM_TEMP_KS LOONGARCH_CSR_KS3
+#define KVM_KSCRATCH_MASK (1 << 2 | 1 << 3)
 
 /* Percpu allocated KS4 */
-#define PERCPU_KS4			LOONGARCH_CSR_KS4
+#define PERCPU_KS4 LOONGARCH_CSR_KS4
 
-/*
- * The following macros are especially useful for __asm__
- * inline assembler.
- */
-#ifndef __STR
-#define __STR(x) #x
-#endif
-#ifndef STR
-#define STR(x) __STR(x)
-#endif
-
-#define fcsr0	$r0
-#define fcsr1	$r1
-#define fcsr2	$r2
-#define fcsr3	$r3
+#define fcsr0 $r0
+#define fcsr1 $r1
+#define fcsr2 $r2
+#define fcsr3 $r3
+#define vcsr16 $r16
 
 // copied from arch/loongarch/include/asm/regdef.h
 #define zero $r0 /* wired zero */
@@ -364,143 +354,28 @@
 #define TLB_PS 29
 #define TLB_MASK ((1 << (TLB_PS + 1)) - 1)
 
-#define TLBRELO0_STANDARD_BITS                                                  \
+#define TLBRELO0_STANDARD_BITS                                                 \
 	(CSR_TLBRELO_V | CSR_TLBRELO_WE | CSR_TLBRELO_CCA | CSR_TLBRELO_GLOBAL)
 #define TLBRELO1_STANDARD_BITS (TLBRELO0_STANDARD_BITS | (1 << TLB_PS))
 
 // ring 0, disable interrupt, mapping
 #define CRMD_PG 4
 #define INIT_VALUE_CRMD (1 << CRMD_PG)
-// #define INIT_VALUE_PRMD 0x0
-
 #define INIT_VALUE_EUEN 0x7
 #define INIT_VALUE_MISC 0x0
-
-// VS 指令间距是
-// 屏蔽 IPI ，时钟，性能计数器 和 硬中断
+// VS 指令间距是 2 ** 7, 屏蔽 IPI ，时钟，性能计数器 和 硬中断
 #define INIT_VALUE_ECFG 0x70000
-
-// 参考 6.2.1，中断的 ecode = 等于中断号 + 64
+// 无需配置缩减虚拟地址
 #define INIT_VALUE_RVACFG 0x0
-
-// 1.8.2 这个字段是 host 设置，guest 只读的
-// 虽然没有什么意义，将其设置为 kvm_cpu->cpu_id, 而不是 0
-// #define INIT_VALUE_CPUNUM 0x0
-
-// TODO 其实我一直都是非常的怀疑到底是否可以 SET 这些 config, 可以进行一些测试
-#define INIT_VALUE_PRCFG1 0x72f8
-// TLB 支持的页大小 [12, 29], 从 4k 到 512M 的大小
-#define INIT_VALUE_PRCFG2 0x3ffff000
-// TLB 的物理参数
-#define INIT_VALUE_PRCFG3 0x8073f2
-
 // 读取的 LLBCTL 总是 0, 猜测是因为多数情况下，LLBit 都不会被其他人清零，所以总是 0
 #define INIT_VALUE_LLBCTL 0x1
-#define INIT_VALUE_IMPCTL1 0x343c3
-// #define INIT_VALUE_IMPCTL2 0x0
-
-// #define INIT_VALUE_CTAG 0x0
-
-#define INIT_VALUE_MCSR0 0x3f2f2fe0014c010
-#define INIT_VALUE_MCSR1 0xfcff007ccfc7
-#define INIT_VALUE_MCSR2 0x1000105f5e100
-#define INIT_VALUE_MCSR3 0x7f33
-#define INIT_VALUE_MCSR8 0x608000300002c3d
-#define INIT_VALUE_MCSR9 0x608000f06080003
-#define INIT_VALUE_MCSR10 0x60e000f
-#define INIT_VALUE_MCSR24 0xe
-
-#define INIT_VALUE_ERRCTL 0x0
-
-// - [x] 为什么需要保存 exception 之前的状态 和 返回地址
-// - [x] 为什么 TLB refill exception 需要单独保存 和 返回地址
-// - [x] TLBRERA / TLBRPRMD 按道理来说都是只读信息才对啊
-// - [x] 那些 TLB refill 在需要处理这些，那么，请问，走普通入口的需要这些吗 ?
-
-// section 5.3 直接映射 和 访问类型还是存在关系的 !
-// 当 MMU 处于直接翻译模式的时候，所有的指令都是按照 CRMD 决定的
-// 当 MMU 处于非映射模拟，如果在直接映射窗口，那么按照窗口，否则按照通过页表项。
-// 所以，使用一致缓存就好了
-//
-// - [x] 没有页表项怎么办? 页表项中间的 TLB 的 MAT 项目从页表项中间获取
-//
-// section 5.2 直接翻译模式 和 映射翻译模式:
-//
-// - [x] 在 TLB refill 的时候，会自动进入到 直接翻译模式 吗?
-//  - 从 CRMD 的说明看，还是进入到映射模式，看来直接映射模式是给机器重启使用的
-// - [x] 5.4 页表映射
-
-// - [x] 之前都是没有区分 STLB 和 MTLB 的，为什么可以正常工作的啊?
-//  - 因为填写的首先指定了大小, 然后可以自动忽视 STLB
-// - [x] pagemask 的实现靠什么东西啊?
-// - 为什么存在两个 PS : TLBHI 和 TLNINDEX
-// - 如果是 TLB refill，那么在 TLBHI 中间处理
-//
-// - [x] CSR.TLBRERA.isTLBR 对于 TLB 指令的影响
-// - [x] TLBWR / TLBFILL / TLBSRCH 分别的作用?
-
-// TLBIDX 的作用
-// - [x] 为什么需要 TLBSRCH 指令，在 TLB refill 的时候，这不是自动填写的吗 ?
-// - 可能是一些我们不知道的需求吧!
-//
-// - TLBIDX bit 位置 NE 和 TLBRERA 的关系。
-//
-// 通过判断 TLBRERA 来区分到底是不是一个 TLB refill
-// TLB refill 被特殊照顾
-// 出错地址信息在 TLBRBADV 上
-
-// - [x] 为什么需要设计成为两种 TLB 啊(历史原因)
-//
-// 内核的疑惑:
-// 1. 按道理，应该是存在 K0 和 K1 这种寄存器, check kvm entry 相关的代码
-//  - 实际上不需要，因为 caller save 的原因，有些寄存器实际上是可以随便使用的
-// 2. TLS 相关的寄存器在哪里 ?
-//  - 似乎 TLS 的代码就是放到 reg[2] 上的
-//
-// 1. LOONGARCH_CSR_EBASE : 0xc
-// 2. LOONGARCH_CSR_TLBREBASE : 0x88
-// 3. LOONGARCH_CSR_ERREBASE : 0x93
-// ERREBASE 入口现在的内核并没有注册
-//
-// 关于实现:
-// - build_tlb_refill_handler :  将代码拷贝到 refill_ebase 中间
-// - configure_exception_vector : ebase 和 refill_ebase 写入到 csr 中间
-// - trap_init : refill_ebase = ebase, 调用各种 handler 设置
-//
-// 从内核代码 和 寄存器数值分析，vector 的距离是 512
-// 需要分配的空间是:
-// ( size = (64 + 14) * vec_size;)
-// 因为自身的中断号 + 14 啊
-// 分配空间其实按照页对齐可以了，因为只是占据 512 byte 的
-//
-// TLB refill 的处理办法:
-// 1. 使用了 TLBRSAVE 寄存器, 首位保存，所以没有 k0 和 k1 寄存器
-// 2. 完全没有在乎 TLBRPRMD 之类的操作
-// - [x] 为什么最后是 TLBWR 而不是 TLBFILL (这是纰漏)
-// 这个指令是从 MIPS 时代就存在的，MIPS tlbwr 就是根据 random 寄存器填写的, 但是现在 TLBWR 是根据 index 来的
-//
-//
-// PGDL 和 PGDH : 提供给 GPD 的两个地址
-//
-// PWCL 和 PWCH : 描述 pagewalk 的地址，虚拟地址用于在各个级别进行所以的位宽和开始范围
-//
-// badvaddr 从哪里找，取决于是否是 TLB refill exception 的
-// PGD 的取值取决于是否出错的地址
 
 #define INIT_VALUE_STLBPS 0xe
 #define INIT_VALUE_PWCTL0 0x5e56e
 #define INIT_VALUE_PWCTL1 0x2e4
 
-// 可以看看内核中间 LOONGARCH_CSR_TMID 的 reference
-// TODO 感觉内核中间把 timerid 当做 CPUID 来使用了
-// 为什么要这样设计 ?
-//
-// 在现在的任务中间:
 // kvm_vz_vcpu_setup 将 timerid 初始化为 `vcpu->vcpu_id`
-//
-// ioctl(vcpu->vm->vm_fd, KVM_CREATE_VCPU, vcpu->cpu_id);
-// 就是 vcpu_id 啊
-
+// 而 ioctl(vcpu->vm->vm_fd, KVM_CREATE_VCPU, vcpu->cpu_id);
 #define INIT_VALUE_TIMERCFG 0x0
 
 // CPUCFG 知道一共存在 4 个，从内核的定义来看，也是如此的
@@ -511,37 +386,32 @@
 
 #define INIT_VALUE_DEBUG 0x0
 
-// GTLBC 来控制 guest MTLB 的数量，只是为了调节性能参数吧
-// hvcl 指令 : hyerpcall
 #define INVALID_CODEFLOW_1 .word(0x00298000 | (0x1))
 #define INVALID_CODEFLOW_2 .word(0x00298000 | (0x2))
 #define INVALID_CODEFLOW_3 .word(0x00298000 | (0x3))
 #define INVALID_EBASE_POSITION 0x4
 #define UNIMP_ERROR .word(0x00298000 | (0x5))
-#define HYPERCALL .word 0x00298000
+#define HYPERCALL .word(0x00298000)
 
-// 从 arch/loongarch/include/asm/asm.h 看，
-// 终于取消掉了 LEAF 和 NESTED 的含义
+// copied arch/loongarch/include/asm/asm.h
 /*
  * LEAF - declare leaf routine
  */
-#define ENTRY(symbol)					\
-		.globl	symbol;				\
-		.align	2;				\
-		.type	symbol, @function;		\
-symbol:
+#define ENTRY(symbol)                                                          \
+	.globl symbol;                                                         \
+	.align 2;                                                              \
+	.type symbol, @function;                                               \
+	symbol:
 
 /*
  * END - mark end of function
  */
-#define END(function)					\
-		.size	function, .-function
+#define END(function) .size function, .- function
 
 #define VCPU_FCSR0 0
 #define VCPU_VCSR 4
 #define VCPU_FCC 8
 #define VCPU_FPR0 16
 #define VCPU_FPR_LEN 32
-
 
 #endif /* end of include guard: INTERNAL_H_6IUWCEFP */

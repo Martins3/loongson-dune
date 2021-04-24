@@ -91,7 +91,6 @@ void die(const char *err, ...)
 	va_end(params);
 }
 
-
 void kvm_free_vcpu(struct kvm_cpu *vcpu)
 {
 	struct kvm_vm *kvm = vcpu->vm;
@@ -350,7 +349,7 @@ bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
 	}
 
 	die("unexpected sysno");
-  return false;
+	return false;
 }
 
 struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
@@ -388,8 +387,8 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 	if (sysno == SYS_CLONE) {
 		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-    // in init_child_thread_info, set up the `a0` regs
-    // child thread will jump to host_loop with `a0 = child_cpu`
+		// in init_child_thread_info, set up the `a0` regs
+		// child thread will jump to host_loop with `a0 = child_cpu`
 		do_simulate_clone(parent_cpu, child_host_stack);
 	}
 
