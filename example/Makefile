@@ -16,8 +16,8 @@ DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 # CFLAGS      += -g -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 CFLAGS      += -g -pthread
 
-$(info $(DEPS) )
-$(info $(TEST) )
+# $(info $(DEPS) )
+# $(info $(TEST) )
 
 all:$(TEST)
 

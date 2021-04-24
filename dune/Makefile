@@ -34,4 +34,4 @@ gdb: dune.out
 	gdb -x debug.txt dune.out
 
 clean:
-	rm -f libdune.a $(ARCH)/dune.o $(ARCH)/entry.o dune.o
+	rm -f libdune.a $(ARCH)/arch.o $(ARCH)/entry.o dune.o

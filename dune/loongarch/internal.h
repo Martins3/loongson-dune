@@ -390,7 +390,8 @@
 #define INVALID_CODEFLOW_2 .word(0x00298000 | (0x2))
 #define INVALID_CODEFLOW_3 .word(0x00298000 | (0x3))
 #define INVALID_EBASE_POSITION 0x4
-#define UNIMP_ERROR .word(0x00298000 | (0x5))
+// TODO check kvm_loongarch_emul_hypcall
+// how EMULATE_DEBUG works ?
 #define HYPERCALL .word(0x00298000)
 
 // copied arch/loongarch/include/asm/asm.h
