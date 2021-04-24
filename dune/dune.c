@@ -15,7 +15,6 @@
 
 #include <sys/time.h>
 #include <sys/resource.h>
-#include <pthread.h>
 
 #include "interface.h"
 
@@ -25,6 +24,7 @@
 #define __USE_GNU
 #endif
 #include <sched.h>
+#include <pthread.h>
 
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
 

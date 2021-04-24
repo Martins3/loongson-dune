@@ -208,8 +208,8 @@ static void init_ebase(struct kvm_cpu *cpu)
 
 	pr_info("ebase address : %llx", cpu->info.ebase);
 
-	extern void err_entry_begin(void);
-	extern void err_entry_end(void);
+	// extern void err_entry_begin(void);
+	// extern void err_entry_end(void);
 	extern void tlb_refill_entry_begin(void);
 	extern void tlb_refill_entry_end(void);
 	extern void syscall_entry_begin(void);
@@ -219,8 +219,8 @@ static void init_ebase(struct kvm_cpu *cpu)
 	       tlb_refill_entry_end - tlb_refill_entry_begin);
 	memcpy(cpu->info.ebase + VEC_SIZE * EXCCODE_SYS, syscall_entry_begin,
 	       syscall_entry_end - syscall_entry_begin);
-	memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
-	       err_entry_end - err_entry_begin);
+	// memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
+				 // err_entry_end - err_entry_begin);
 }
 
 struct csr_reg {
@@ -240,15 +240,14 @@ static void init_csr(struct kvm_cpu *cpu)
 		die("You forget to init ebase");
 
 	u64 INIT_VALUE_DMWIN1 = CSR_DMW1_INIT;
-	u64 INIT_VALUE_KSCRATCH6 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
-	u64 INIT_VALUE_KSCRATCH7 = TLBRELO0_STANDARD_BITS;
-	u64 INIT_VALUE_KSCRATCH8 = TLBRELO1_STANDARD_BITS;
+	u64 INIT_VALUE_KSCRATCH5 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
+	u64 INIT_VALUE_KSCRATCH6 = TLBRELO0_STANDARD_BITS;
+	u64 INIT_VALUE_KSCRATCH7 = TLBRELO1_STANDARD_BITS;
 	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
 	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
 
-	u64 INIT_VALUE_CPUNUM = cpu->cpu_id;
 	// FIXME 从手册和内核上，都是 tid 代替 cpuid 的感觉，kvm 中将会将 tid 初始化为 cpu->cpu_id
-	u64 INIT_VALUE_ERREBASE = (u64)cpu->info.ebase + ERREBASE_OFFSET;
+	u64 INIT_VALUE_CPUNUM = cpu->cpu_id;
 
 	struct csr_reg one_regs[] = {
 		CSR_INIT_REG(CRMD),
@@ -280,9 +279,9 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(KSCRATCH2),
 		// CSR_INIT_REG(KSCRATCH3),
 		// CSR_INIT_REG(KSCRATCH4),
-		// CSR_INIT_REG(KSCRATCH5),
-		// CSR_INIT_REG(KSCRATCH6),
-		CSR_INIT_REG(KSCRATCH7), CSR_INIT_REG(KSCRATCH8),
+    CSR_INIT_REG(KSCRATCH5),
+    CSR_INIT_REG(KSCRATCH6),
+		CSR_INIT_REG(KSCRATCH7),
 		// CSR_INIT_REG(TIMERID), // kvm 会初始化
 		// 从 kvm_vz_queue_timer_int_cb 看，disable 掉 TIMERCFG::EN 的确可以不被注入
 		// 时钟中断
@@ -293,7 +292,7 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(GCFG),  gcsr
 		// CSR_INIT_REG(GINTC), gcsr
 		// CSR_INIT_REG(GCNTC), gcsr
-		CSR_INIT_REG(LLBCTL),
+		// CSR_INIT_REG(LLBCTL), // 没有这个入口
 		// CSR_INIT_REG(IMPCTL1),
 		// CSR_INIT_REG(IMPCTL2),
 		// CSR_INIT_REG(GNMI),
@@ -344,7 +343,7 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(PERF2_COUNT),
 		// CSR_INIT_REG(PERF3_EVENT),
 		// CSR_INIT_REG(PERF3_COUNT),
-		CSR_INIT_REG(DEBUG),
+		// CSR_INIT_REG(DEBUG),
 		// CSR_INIT_REG(DEPC),
 		// CSR_INIT_REG(DESAVE),
 	};

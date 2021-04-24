@@ -406,7 +406,8 @@
 /*
  * END - mark end of function
  */
-#define END(function) .size function, .- function
+#define END(function)					\
+		.size	function, .-function
 
 #define VCPU_FCSR0 0
 #define VCPU_VCSR 4

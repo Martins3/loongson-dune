@@ -170,7 +170,6 @@ static void init_cp0(struct kvm_cpu *cpu)
 		// CP0_INIT_REG(SEGCTL1),
 		// CP0_INIT_REG(SEGCTL2),
 		CP0_INIT_REG(PWBASE),
-		CP0_INIT_REG(PWFIELD),
 		CP0_INIT_REG(PWSIZE),
 		CP0_INIT_REG(WIRED),
 		CP0_INIT_REG(PWCTL),

@@ -1,10 +1,10 @@
 #include "internal.h"
-.global err_entry_begin
-.global err_entry_end
-
-err_entry_begin:
-INVALID_CODEFLOW_1
-err_entry_end:
+; .global err_entry_begin
+; .global err_entry_end
+;
+; err_entry_begin:
+; INVALID_CODEFLOW_1
+; err_entry_end:
 
 .global tlb_refill_entry_begin
 .global tlb_refill_entry_end
@@ -18,8 +18,8 @@ csrrd t0, LOONGARCH_CSR_TLBREHI
 // 因为 Loongarch 的 TLB 采用奇偶页, 所以从 EntryHi 的获取掩码为 1G 而不是 512M
 
 // page fault 的 1G 对齐地址
-slli.d t0, TLBRSAVE, (TLB_PS + 1)
-srli.d t0, TLBRSAVE, (TLB_PS + 1)
+slli.d t0, t0, (TLB_PS + 1)
+srli.d t0, t0, (TLB_PS + 1)
 
 // 整个计算过程中， t0 的数值始终保持不变
 // 使用 t1 来对应的掩码
@@ -28,11 +28,11 @@ li t1, TLB_PS
 csrxchg t0, t1, LOONGARCH_CSR_TLBREHI
 
 csrwr t0, LOONGARCH_CSR_TLBRELO0
-csrrd t1, LOONGARCH_CSR_KS7
+csrrd t1, LOONGARCH_CSR_KS6
 csrxchg t0, t1, LOONGARCH_CSR_TLBRELO0
 
 csrwr t0, LOONGARCH_CSR_TLBRELO0
-csrrd t1, LOONGARCH_CSR_KS8
+csrrd t1, LOONGARCH_CSR_KS7
 csrxchg t0, t1, LOONGARCH_CSR_TLBRELO1
 tlbfill
 
@@ -46,7 +46,7 @@ tlb_refill_entry_end:
 .global syscall_entry_begin
 .global syscall_entry_end
 syscall_entry_begin:
-csrrd rd, LOONGARCH_CSR_KS7
+csrrd t0, LOONGARCH_CSR_KS5
 st.d a0, t0, 0 
 st.d a1, t0, 8 
 st.d a2, t0, 16
@@ -74,21 +74,124 @@ switch_stack:
 // 参考 emulate_fork_by_two_vcpu 中在 stack 上设置的参数
 ENTRY (__do_simulate_clone)
 	/* Do the system call.  */
-	dli	a7,__NR_clone
+	dli	a7,220 /* #define __NR_clone 220 */
 	syscall	0
 
-	beqz	a0,L (child)
+	beqz	a0, 1f
 
 	/* Successful return from the parent.  */
   jirl zero, ra, 0
 
-L (child):
+1:
   /* t0 是 __SYSCALL_CLOBBERS 寄存器，可以随意修改 */
   move a0, a1
   b host_loop
 END (__do_simulate_clone)
 
-ENTRY (save_fpu_regs)
+.macro	parse_r var r
+\var	= -1
+.ifc	\r, $r0
+\var	= 0
+.endif
+.ifc	\r, $r1
+\var	= 1
+.endif
+.ifc	\r, $r2
+\var	= 2
+.endif
+.ifc	\r, $r3
+\var	= 3
+.endif
+.ifc	\r, $r4
+\var	= 4
+.endif
+.ifc	\r, $r5
+\var	= 5
+.endif
+.ifc	\r, $r6
+\var	= 6
+.endif
+.ifc	\r, $r7
+\var	= 7
+.endif
+.ifc	\r, $r8
+\var	= 8
+.endif
+.ifc	\r, $r9
+\var	= 9
+.endif
+.ifc	\r, $r10
+\var	= 10
+.endif
+.ifc	\r, $r11
+\var	= 11
+.endif
+.ifc	\r, $r12
+\var	= 12
+.endif
+.ifc	\r, $r13
+\var	= 13
+.endif
+.ifc	\r, $r14
+\var	= 14
+.endif
+.ifc	\r, $r15
+\var	= 15
+.endif
+.ifc	\r, $r16
+\var	= 16
+.endif
+.ifc	\r, $r17
+\var	= 17
+.endif
+.ifc	\r, $r18
+\var	= 18
+.endif
+.ifc	\r, $r19
+\var	= 19
+.endif
+.ifc	\r, $r20
+\var	= 20
+.endif
+.ifc	\r, $r21
+\var	= 21
+.endif
+.ifc	\r, $r22
+\var	= 22
+.endif
+.ifc	\r, $r23
+\var	= 23
+.endif
+.ifc	\r, $r24
+\var	= 24
+.endif
+.ifc	\r, $r25
+\var	= 25
+.endif
+.ifc	\r, $r26
+\var	= 26
+.endif
+.ifc	\r, $r27
+\var	= 27
+.endif
+.ifc	\r, $r28
+\var	= 28
+.endif
+.ifc	\r, $r29
+\var	= 29
+.endif
+.ifc	\r, $r30
+\var	= 30
+.endif
+.ifc	\r, $r31
+\var	= 31
+.endif
+.iflt	\var
+.error	"Unable to parse register name \r"
+.endif
+.endm
+
+ENTRY (get_fpu_regs)
 	movfcsr2gr	t0, fcsr0
 	st.w t0,	a0, VCPU_FCSR0
 
@@ -114,41 +217,41 @@ ENTRY (save_fpu_regs)
 	movfcsr2gr	t0, $r16
 	st.w	t0, a0, VCPU_VCSR
 
-  // TODO 感觉这个东西并不会正常编译啊
-	li              t0, THREAD_FPR0
+  __tmp = 12 /* #define t0 $r12 */
+	li              t0, VCPU_FPR0
 	add.d t0,       a0, t0
-	.word (0xb3 << 22 | ((0 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 0)
-	.word (0xb3 << 22 | ((1 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 1)
-	.word (0xb3 << 22 | ((2 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 2)
-	.word (0xb3 << 22 | ((3 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 3)
-	.word (0xb3 << 22 | ((4 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 4)
-	.word (0xb3 << 22 | ((5 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 5)
-	.word (0xb3 << 22 | ((6 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 6)
-	.word (0xb3 << 22 | ((7 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 7)
-	.word (0xb3 << 22 | ((8 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 8)
-	.word (0xb3 << 22 | ((9 * VCPU_FPR_LEN) << 10)  | t0 << 5 | 9)
-	.word (0xb3 << 22 | ((10* VCPU_FPR_LEN) << 10) | t0 << 5 | 10)
-	.word (0xb3 << 22 | ((11* VCPU_FPR_LEN) << 10) | t0 << 5 | 11)
-	.word (0xb3 << 22 | ((12* VCPU_FPR_LEN) << 10) | t0 << 5 | 12)
-	.word (0xb3 << 22 | ((13* VCPU_FPR_LEN) << 10) | t0 << 5 | 13)
-	.word (0xb3 << 22 | ((14* VCPU_FPR_LEN) << 10) | t0 << 5 | 14)
-	.word (0xb3 << 22 | ((15* VCPU_FPR_LEN) << 10) | t0 << 5 | 15)
-	.word (0xb3 << 22 | ((16* VCPU_FPR_LEN) << 10) | t0 << 5 | 16)
-	.word (0xb3 << 22 | ((17* VCPU_FPR_LEN) << 10) | t0 << 5 | 17)
-	.word (0xb3 << 22 | ((18* VCPU_FPR_LEN) << 10) | t0 << 5 | 18)
-	.word (0xb3 << 22 | ((19* VCPU_FPR_LEN) << 10) | t0 << 5 | 19)
-	.word (0xb3 << 22 | ((20* VCPU_FPR_LEN) << 10) | t0 << 5 | 20)
-	.word (0xb3 << 22 | ((21* VCPU_FPR_LEN) << 10) | t0 << 5 | 21)
-	.word (0xb3 << 22 | ((22* VCPU_FPR_LEN) << 10) | t0 << 5 | 22)
-	.word (0xb3 << 22 | ((23* VCPU_FPR_LEN) << 10) | t0 << 5 | 23)
-	.word (0xb3 << 22 | ((24* VCPU_FPR_LEN) << 10) | t0 << 5 | 24)
-	.word (0xb3 << 22 | ((25* VCPU_FPR_LEN) << 10) | t0 << 5 | 25)
-	.word (0xb3 << 22 | ((26* VCPU_FPR_LEN) << 10) | t0 << 5 | 26)
-	.word (0xb3 << 22 | ((27* VCPU_FPR_LEN) << 10) | t0 << 5 | 27)
-	.word (0xb3 << 22 | ((28* VCPU_FPR_LEN) << 10) | t0 << 5 | 28)
-	.word (0xb3 << 22 | ((29* VCPU_FPR_LEN) << 10) | t0 << 5 | 29)
-	.word (0xb3 << 22 | ((30* VCPU_FPR_LEN) << 10) | t0 << 5 | 30)
-	.word (0xb3 << 22 | ((31* VCPU_FPR_LEN) << 10) | t0 << 5 | 31)
+	.word (0xb3 << 22 | ((0 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 0)
+	.word (0xb3 << 22 | ((1 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 1)
+	.word (0xb3 << 22 | ((2 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 2)
+	.word (0xb3 << 22 | ((3 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 3)
+	.word (0xb3 << 22 | ((4 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 4)
+	.word (0xb3 << 22 | ((5 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 5)
+	.word (0xb3 << 22 | ((6 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 6)
+	.word (0xb3 << 22 | ((7 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 7)
+	.word (0xb3 << 22 | ((8 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 8)
+	.word (0xb3 << 22 | ((9 * VCPU_FPR_LEN) << 10) | __tmp  << 5 | 9)
+	.word (0xb3 << 22 | ((10* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 10)
+	.word (0xb3 << 22 | ((11* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 11)
+	.word (0xb3 << 22 | ((12* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 12)
+	.word (0xb3 << 22 | ((13* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 13)
+	.word (0xb3 << 22 | ((14* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 14)
+	.word (0xb3 << 22 | ((15* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 15)
+	.word (0xb3 << 22 | ((16* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 16)
+	.word (0xb3 << 22 | ((17* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 17)
+	.word (0xb3 << 22 | ((18* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 18)
+	.word (0xb3 << 22 | ((19* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 19)
+	.word (0xb3 << 22 | ((20* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 20)
+	.word (0xb3 << 22 | ((21* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 21)
+	.word (0xb3 << 22 | ((22* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 22)
+	.word (0xb3 << 22 | ((23* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 23)
+	.word (0xb3 << 22 | ((24* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 24)
+	.word (0xb3 << 22 | ((25* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 25)
+	.word (0xb3 << 22 | ((26* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 26)
+	.word (0xb3 << 22 | ((27* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 27)
+	.word (0xb3 << 22 | ((28* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 28)
+	.word (0xb3 << 22 | ((29* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 29)
+	.word (0xb3 << 22 | ((30* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 30)
+	.word (0xb3 << 22 | ((31* VCPU_FPR_LEN) << 10) | __tmp  << 5 | 31)
 
   jirl zero, ra, 0
-END (int_fpu_regs)
+END (get_fpu_regs)
