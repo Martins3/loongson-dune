@@ -206,8 +206,6 @@ static void init_ebase(struct kvm_cpu *cpu)
 		*x = (0x002b8000 | INVALID_EBASE_POSITION);
 	}
 
-	pr_info("ebase address : %llx", cpu->info.ebase);
-
 	// extern void err_entry_begin(void);
 	// extern void err_entry_end(void);
 	extern void tlb_refill_entry_begin(void);
@@ -221,6 +219,9 @@ static void init_ebase(struct kvm_cpu *cpu)
 	       syscall_entry_end - syscall_entry_begin);
 	// memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
 	// err_entry_end - err_entry_begin);
+  
+	pr_info("ebase address : %llx", cpu->info.ebase);
+	pr_info("ebase address : %llx", cpu->info.ebase + VEC_SIZE * EXCCODE_SYS);
 }
 
 struct csr_reg {
@@ -357,8 +358,8 @@ static void init_csr(struct kvm_cpu *cpu)
 		    0) {
 			die("KVM_SET_ONE_REG %s", one_regs[i].name);
 		} else {
-      pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
-      one_regs[i].v);
+      // pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
+      // one_regs[i].v);
 		}
 	}
 }
@@ -409,7 +410,6 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		 : "memory"
 		 : guest_entry);
 
-	regs->pc -= 4; // let guest jump guest_entry directly
 	arch_dump_regs(STDOUT_FILENO, *regs);
 
 	init_ebase(cpu);
@@ -442,14 +442,14 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 #ifdef LOONGSON
 bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
-	register long int __a7 asm("$a7") = cpu->syscall_parameter[0];
-	register long int __a0 asm("$a0") = cpu->syscall_parameter[1];
-	register long int __a1 asm("$a1") = cpu->syscall_parameter[2];
-	register long int __a2 asm("$a2") = cpu->syscall_parameter[3];
-	register long int __a3 asm("$a3") = cpu->syscall_parameter[4];
-	register long int __a4 asm("$a4") = cpu->syscall_parameter[5];
-	register long int __a5 asm("$a5") = cpu->syscall_parameter[6];
-	register long int __a6 asm("$a6") = cpu->syscall_parameter[7];
+	register long int __a7 asm("$a7") = cpu->syscall_parameter[7];
+	register long int __a0 asm("$a0") = cpu->syscall_parameter[0];
+	register long int __a1 asm("$a1") = cpu->syscall_parameter[1];
+	register long int __a2 asm("$a2") = cpu->syscall_parameter[2];
+	register long int __a3 asm("$a3") = cpu->syscall_parameter[3];
+	register long int __a4 asm("$a4") = cpu->syscall_parameter[4];
+	register long int __a5 asm("$a5") = cpu->syscall_parameter[5];
+	register long int __a6 asm("$a6") = cpu->syscall_parameter[6];
 
 	__asm__ volatile("syscall	0\n\t"
 			 : "+r"(__a0)

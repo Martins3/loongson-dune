@@ -420,8 +420,6 @@ void host_loop(struct kvm_cpu *vcpu)
 			die("KVM_RUN : err=%d\n", err);
 		}
 
-    die("we go out\n");
-
 		if (vcpu->kvm_run->exit_reason == KVM_EXIT_INTR) {
 			continue;
 		}

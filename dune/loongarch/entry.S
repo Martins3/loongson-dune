@@ -57,6 +57,11 @@ st.d a6, t0, 48
 st.d a7, t0, 56
 HYPERCALL
 ld.d v0, t0, 0
+
+csrrd t0, LOONGARCH_CSR_EPC
+addi.d t0, t0, 4
+csrwr t0, LOONGARCH_CSR_EPC
+
 ertn
 syscall_entry_end:
 

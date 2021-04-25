@@ -240,12 +240,15 @@
 #define LOONGARCH_CSR_TLBREHI 0x8e /* TLB refill entryhi */
 #define LOONGARCH_CSR_TLBRPRMD 0x8f /* TLB refill mode info */
 
+#define LOONGARCH_CSR_EPC		0x6	/* EPC */
+
 #define DMW_PABITS 48
 #define CSR_DMW1_PLV0 _CONST64_(1 << 0)
 #define CSR_DMW1_MAT _CONST64_(1 << 4)
 #define CSR_DMW1_VSEG _CONST64_(0x9000)
 #define CSR_DMW1_BASE (CSR_DMW1_VSEG << DMW_PABITS)
 #define CSR_DMW1_INIT (CSR_DMW1_BASE | CSR_DMW1_MAT | CSR_DMW1_PLV0)
+#define LOONGARCH_CSR_EPC		0x6	/* EPC */
 
 /* Kscratch registers */
 #define LOONGARCH_CSR_KS0 0x30
@@ -389,10 +392,10 @@
 #define INVALID_CODEFLOW_1 .word(0x002b8000 | (0x1))
 #define INVALID_CODEFLOW_2 .word(0x002b8000 | (0x2))
 #define INVALID_CODEFLOW_3 .word(0x002b8000 | (0x3))
-#define INVALID_EBASE_POSITION 0x4
+#define INVALID_EBASE_POSITION 0x13
 // TODO check kvm_loongarch_emul_hypcall
 // how EMULATE_DEBUG works ?
-#define HYPERCALL .word(0x00298000)
+#define HYPERCALL .word(0x002b8000)
 
 // copied arch/loongarch/include/asm/asm.h
 /*
