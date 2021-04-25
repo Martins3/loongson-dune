@@ -386,9 +386,9 @@
 
 #define INIT_VALUE_DEBUG 0x0
 
-#define INVALID_CODEFLOW_1 .word(0x00298000 | (0x1))
-#define INVALID_CODEFLOW_2 .word(0x00298000 | (0x2))
-#define INVALID_CODEFLOW_3 .word(0x00298000 | (0x3))
+#define INVALID_CODEFLOW_1 .word(0x002b8000 | (0x1))
+#define INVALID_CODEFLOW_2 .word(0x002b8000 | (0x2))
+#define INVALID_CODEFLOW_3 .word(0x002b8000 | (0x3))
 #define INVALID_EBASE_POSITION 0x4
 // TODO check kvm_loongarch_emul_hypcall
 // how EMULATE_DEBUG works ?

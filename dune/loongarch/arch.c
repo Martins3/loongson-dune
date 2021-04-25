@@ -203,7 +203,7 @@ static void init_ebase(struct kvm_cpu *cpu)
 	for (int i = 0; i < PAGESIZE; ++i) {
 		int *x = (int *)cpu->info.ebase;
 		x = x + i;
-		*x = (0x00298000 | INVALID_EBASE_POSITION);
+		*x = (0x002b8000 | INVALID_EBASE_POSITION);
 	}
 
 	pr_info("ebase address : %llx", cpu->info.ebase);
@@ -220,7 +220,7 @@ static void init_ebase(struct kvm_cpu *cpu)
 	memcpy(cpu->info.ebase + VEC_SIZE * EXCCODE_SYS, syscall_entry_begin,
 	       syscall_entry_end - syscall_entry_begin);
 	// memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
-				 // err_entry_end - err_entry_begin);
+	// err_entry_end - err_entry_begin);
 }
 
 struct csr_reg {
@@ -241,8 +241,9 @@ static void init_csr(struct kvm_cpu *cpu)
 
 	u64 INIT_VALUE_DMWIN1 = CSR_DMW1_INIT;
 	u64 INIT_VALUE_KSCRATCH5 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
-	u64 INIT_VALUE_KSCRATCH6 = TLBRELO0_STANDARD_BITS;
+  u64 INIT_VALUE_KSCRATCH6 = TLBRELO0_STANDARD_BITS;
 	u64 INIT_VALUE_KSCRATCH7 = TLBRELO1_STANDARD_BITS;
+
 	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
 	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
 
@@ -279,8 +280,7 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(KSCRATCH2),
 		// CSR_INIT_REG(KSCRATCH3),
 		// CSR_INIT_REG(KSCRATCH4),
-    CSR_INIT_REG(KSCRATCH5),
-    CSR_INIT_REG(KSCRATCH6),
+		CSR_INIT_REG(KSCRATCH5), CSR_INIT_REG(KSCRATCH6),
 		CSR_INIT_REG(KSCRATCH7),
 		// CSR_INIT_REG(TIMERID), // kvm 会初始化
 		// 从 kvm_vz_queue_timer_int_cb 看，disable 掉 TIMERCFG::EN 的确可以不被注入
@@ -357,8 +357,8 @@ static void init_csr(struct kvm_cpu *cpu)
 		    0) {
 			die("KVM_SET_ONE_REG %s", one_regs[i].name);
 		} else {
-			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
-			// one_regs[i].v);
+      pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
+      one_regs[i].v);
 		}
 	}
 }
@@ -366,6 +366,7 @@ static void init_csr(struct kvm_cpu *cpu)
 static int __attribute__((noinline))
 kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
+  BUILD_ASSERT(offsetof(struct kvm_regs, pc) == 256);
 	asm goto("\n\t"
 		 "st.d $r0,  $r5, 0\n\t"
 		 "st.d $r1,  $r5, 8\n\t"
@@ -499,7 +500,6 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	if (ioctl(child_cpu->vcpu_fd, KVM_SET_REGS, &child_regs) < 0)
 		die("KVM_SET_REGS");
 
-	// TODO
 	dup_fpu(child_cpu, &parent_cpu->info.fpu);
 	init_csr(child_cpu);
 }

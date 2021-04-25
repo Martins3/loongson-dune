@@ -10,7 +10,6 @@
 .global tlb_refill_entry_end
 
 tlb_refill_entry_begin:
-
 csrwr t0,  LOONGARCH_CSR_TLBRSAVE
 csrwr t1,  LOONGARCH_CSR_KS0
 
@@ -18,26 +17,27 @@ csrrd t0, LOONGARCH_CSR_TLBREHI
 // 因为 Loongarch 的 TLB 采用奇偶页, 所以从 EntryHi 的获取掩码为 1G 而不是 512M
 
 // page fault 的 1G 对齐地址
-slli.d t0, t0, (TLB_PS + 1)
 srli.d t0, t0, (TLB_PS + 1)
+slli.d t0, t0, (TLB_PS + 1)
 
 // 整个计算过程中， t0 的数值始终保持不变
 // 使用 t1 来对应的掩码
-csrwr t0, LOONGARCH_CSR_TLBREHI
 li t1, TLB_PS
-csrxchg t0, t1, LOONGARCH_CSR_TLBREHI
+add.d t1, t1, t0
+csrwr t1, LOONGARCH_CSR_TLBREHI
 
-csrwr t0, LOONGARCH_CSR_TLBRELO0
 csrrd t1, LOONGARCH_CSR_KS6
-csrxchg t0, t1, LOONGARCH_CSR_TLBRELO0
+add.d t1, t1, t0
+csrwr t1, LOONGARCH_CSR_TLBRELO0
 
-csrwr t0, LOONGARCH_CSR_TLBRELO0
 csrrd t1, LOONGARCH_CSR_KS7
-csrxchg t0, t1, LOONGARCH_CSR_TLBRELO1
+add.d t1, t1, t0
+csrwr t1, LOONGARCH_CSR_TLBRELO1
 tlbfill
 
 csrrd t0,  LOONGARCH_CSR_TLBRSAVE
 csrrd t1,  LOONGARCH_CSR_KS0
+
 ertn
 tlb_refill_entry_end:
 
