@@ -168,7 +168,7 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 		die("KVM_GET_REGS");
 
 	parent_cpu->info.era =
-		kvm_get_csr_reg(parent_cpu, KVM_LOONGARCH_CSR_EPC);
+		kvm_get_csr_reg(parent_cpu, KVM_CSR_EPC);
 
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
@@ -435,12 +435,15 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 	kvm_launch(cpu, &regs);
 }
 
-// a7 是作为 syscall number
+// a7($r11) 是作为 syscall number
+u64 arch_get_sysno(const struct kvm_cpu *cpu){
+  return cpu->syscall_parameter[7];
+}
 #define __SYSCALL_CLOBBERS                                                     \
 	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
 
 #ifdef LOONGSON
-bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
+bool arch_do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
 	register long int __a7 asm("$a7") = cpu->syscall_parameter[7];
 	register long int __a0 asm("$a0") = cpu->syscall_parameter[0];
@@ -479,12 +482,9 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 	// see arch/loongarch/kvm/loongisa.c:kvm_arch_vcpu_ioctl_run
 	child_cpu->kvm_run->hypercall.ret = child_regs.gpr[4];
 
-	if (parent_cpu->syscall_parameter[0] | CLONE_SETTLS) {
+	if (parent_cpu->syscall_parameter[0] & CLONE_SETTLS) {
 		child_regs.gpr[2] = parent_cpu->syscall_parameter[4];
 	}
-
-	// #define a1 $r5
-	child_regs.gpr[5] = (u64)child_cpu;
 
 	if (sysno == SYS_CLONE) {
 		// see linux kernel fork.c:copy_thread
@@ -520,9 +520,9 @@ void escape()
 	die("unimp");
 }
 
-u64 __do_simulate_clone(u64, u64, u64, u64, u64);
+u64 __do_simulate_clone(u64, u64, u64, u64, u64, u64);
 
-void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
+void do_simulate_clone(struct kvm_cpu *parent_cpu, const struct kvm_cpu * child_cpu, u64 child_host_stack)
 {
 	u64 arg0 = parent_cpu->syscall_parameter[0];
 	// u64 a1 = parent_cpu->syscall_parameter[1];
@@ -532,7 +532,7 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
 
 	// parent 原路返回，child 进入到 child_entry 中间
 	long child_pid =
-		__do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4);
+		__do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4, (u64)child_cpu);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;

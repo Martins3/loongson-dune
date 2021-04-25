@@ -119,7 +119,8 @@ struct clone3_args {
 
 void arch_dune_enter(struct kvm_cpu *cpu);
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack);
-bool do_syscall(struct kvm_cpu *cpu, bool is_fork);
+u64 arch_get_sysno(const struct kvm_cpu *cpu); // FIXME implement mips version
+bool arch_do_syscall(struct kvm_cpu *cpu, bool is_fork);
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu);
 // 设置 child 的 tls, stack, host_loop 的参数 vcpu
 void init_child_thread_info(struct kvm_cpu *child_cpu,
@@ -131,7 +132,11 @@ bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno);
 //    1. vcpu 需要被释放 FIXME
 //    2. fork 不需要处理
 // 2. 如果是 fork / clone 模拟，但是退出原因是接下来的 kvm 操作，那么 die 最后调用 exit_group，程序退出，所以无需考虑
+//
+// FIXME 由于 do_simulate_clone / emulate_fork_by_two_vcpu
+// 曾经将参数放到 stack 上，现在是放到寄存器上的
 void do_simulate_clone(struct kvm_cpu *parent_cpu,
+const struct kvm_cpu *child_cpu,
 				  u64 child_host_stack);
 void escape(); // TODO
 /**

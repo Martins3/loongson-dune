@@ -365,8 +365,7 @@ struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
-	if (do_syscall(parent_cpu, true)) {
-		// TODO 如果 fork 成功，在 child 中间 dup_vm 却失败, 其返回值也是 NULL
+	if (arch_do_syscall(parent_cpu, true)) {
 		return dup_vm(parent_cpu, sysno);
 	}
 	// parent return null
@@ -389,7 +388,7 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
 		// in init_child_thread_info, set up the `a0` regs
 		// child thread will jump to host_loop with `a0 = child_cpu`
-		do_simulate_clone(parent_cpu, child_host_stack);
+		do_simulate_clone(parent_cpu, child_cpu, child_host_stack);
 	}
 
 	else if (sysno == SYS_CLONE3) {
@@ -413,7 +412,7 @@ void host_loop(struct kvm_cpu *vcpu)
 {
 	while (true) {
 		long err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
-		u64 sysno = vcpu->syscall_parameter[0];
+		u64 sysno = arch_get_sysno(vcpu);
 		struct kvm_regs regs;
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN)) {
@@ -467,6 +466,6 @@ void host_loop(struct kvm_cpu *vcpu)
 		if (arch_handle_special_syscall(vcpu, sysno))
 			continue;
 
-		do_syscall(vcpu, false);
+		arch_do_syscall(vcpu, false);
 	}
 }

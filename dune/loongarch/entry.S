@@ -71,7 +71,6 @@ switch_stack:
 	move sp, a1
 	b host_loop /* host_loop 绝对不会返回 */
 
-// 不存在 ret 指令
 // 从 arch/loongarch/include/asm/stackframe.h 看
 // 调用 syscall 之后, ra, sp, fp 和参数都会保存下来
 
@@ -88,8 +87,7 @@ ENTRY (__do_simulate_clone)
   jirl zero, ra, 0
 
 1:
-  /* t0 是 __SYSCALL_CLOBBERS 寄存器，可以随意修改 */
-  move a0, a1
+  move a0, a5
   b host_loop
 END (__do_simulate_clone)
 
