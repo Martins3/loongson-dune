@@ -1,0 +1,35 @@
+From cdf7adfbea08ba9a0c261e24fb5ee2440d4542b8 Mon Sep 17 00:00:00 2001
+From: martins3 <hubachelar@gmail.com>
+Date: Tue, 27 Apr 2021 16:05:13 +0800
+Subject: [PATCH 3/6] dune: three
+
+---
+ add_dune_enter.sh | 5 ++---
+ 1 file changed, 2 insertions(+), 3 deletions(-)
+
+diff --git a/add_dune_enter.sh b/add_dune_enter.sh
+index de9378218..5d0ac0aef 100644
+--- a/add_dune_enter.sh
++++ b/add_dune_enter.sh
+@@ -2,8 +2,7 @@
+ 
+ set -e
+ function add_dune_enter() {
+-  dir=/home/loongson/ltp/testcases/kernel/syscalls/$1
+-  for cfile in $dir/*.c; do
++  for cfile in $1/*.c; do
+     if [[ -f $cfile ]];then
+       echo $cfile
+       line=$(grep -n 'int main' $cfile | cut -d: -f 1)
+@@ -19,7 +18,7 @@ function add_dune_enter() {
+           let "next_line= $line_num + 2 + $i"
+           echo "next_line = $next_line"
+           # sed -n -e $line,"$next_line"p $cfile
+-          sed -i "$next_line i #ifdef DUNE\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
++          sed -i "$next_line i #ifdef DUNE\nint dune_enter();\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
+           i=$((i+5))
+         done
+       fi
+-- 
+2.20.1
+

@@ -1,0 +1,25 @@
+From f86e2f5cae9e5cda6dc0f352696e9aeaaceed616 Mon Sep 17 00:00:00 2001
+From: martins3 <hubachelar@gmail.com>
+Date: Tue, 27 Apr 2021 16:26:07 +0800
+Subject: [PATCH 6/6] dune:six
+
+---
+ add_dune_enter.sh | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/add_dune_enter.sh b/add_dune_enter.sh
+index 5d0ac0aef..2608b66c8 100755
+--- a/add_dune_enter.sh
++++ b/add_dune_enter.sh
+@@ -19,7 +19,7 @@ function add_dune_enter() {
+           echo "next_line = $next_line"
+           # sed -n -e $line,"$next_line"p $cfile
+           sed -i "$next_line i #ifdef DUNE\nint dune_enter();\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
+-          i=$((i+5))
++          i=$((i+6))
+         done
+       fi
+     else
+-- 
+2.20.1
+

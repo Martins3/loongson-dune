@@ -1,0 +1,144 @@
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace01.c b/testcases/kernel/syscalls/ptrace/ptrace01.c
+index 9071bbaba..223d62fa5 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace01.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace01.c
+@@ -22,6 +22,7 @@
+  * In both cases, child should stop & notify parent on reception of SIGUSR2.
+  */
+ 
++#include <stdint.h>
+ #include <stdlib.h>
+ #include <errno.h>
+ #include <signal.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace02.c b/testcases/kernel/syscalls/ptrace/ptrace02.c
+index e330f459e..f840916ac 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace02.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace02.c
+@@ -7,6 +7,7 @@
+  * CAP_SYS_PTRACE capability for the process. Such as nobody user.
+  */
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace03.c b/testcases/kernel/syscalls/ptrace/ptrace03.c
+index b2b3fb49d..dcdf415d6 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace03.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace03.c
+@@ -10,6 +10,7 @@
+  * to trace a process which is already been traced
+  */
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace04.c b/testcases/kernel/syscalls/ptrace/ptrace04.c
+index af35fb3a2..94865fa13 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace04.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace04.c
+@@ -8,6 +8,7 @@
+ 
+ #define _GNU_SOURCE
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace05.c b/testcases/kernel/syscalls/ptrace/ptrace05.c
+index 54cfa4d7b..15308815b 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace05.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace05.c
+@@ -23,6 +23,7 @@
+  ******************************************************************************
+  */
+ 
++#include <stdint.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <signal.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace06.c b/testcases/kernel/syscalls/ptrace/ptrace06.c
+index c0cb3b9bd..de26e6369 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace06.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace06.c
+@@ -11,6 +11,7 @@
+ 
+ #define _GNU_SOURCE
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <stdbool.h>
+ #include <stdio.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace07.c b/testcases/kernel/syscalls/ptrace/ptrace07.c
+index 9e3f7511d..48d214489 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace07.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace07.c
+@@ -24,6 +24,7 @@
+  * know about the architecture-dependent FPU state.
+  */
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <inttypes.h>
+ #include <sched.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace08.c b/testcases/kernel/syscalls/ptrace/ptrace08.c
+index f86f69a9c..57dcaf978 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace08.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace08.c
+@@ -34,6 +34,7 @@
+  * commit 27747f8bc355 ("perf/x86/hw_breakpoints: Fix check for kernel-space breakpoints").
+  */
+ 
++#include <stdint.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <stddef.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace09.c b/testcases/kernel/syscalls/ptrace/ptrace09.c
+index 85875ce65..74bd05baa 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace09.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace09.c
+@@ -15,6 +15,7 @@
+  *  x86/entry/64: Don't use IST entry for #BP stack
+  */
+ 
++#include <stdint.h>
+ #include <stdlib.h>
+ #include <stddef.h>
+ #include <sys/ptrace.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace10.c b/testcases/kernel/syscalls/ptrace/ptrace10.c
+index b5d6b9f8f..f7199a5f2 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace10.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace10.c
+@@ -14,6 +14,7 @@
+  *     perf/hw_breakpoint: Modify breakpoint even if the new attr has disabled set
+  */
+ 
++#include <stdint.h>
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <stddef.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace11.c b/testcases/kernel/syscalls/ptrace/ptrace11.c
+index c54441671..6ac97dd7c 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace11.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace11.c
+@@ -12,6 +12,7 @@
+  * successfully.
+  */
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+diff --git a/testcases/kernel/syscalls/ptrace/simple_tracer.c b/testcases/kernel/syscalls/ptrace/simple_tracer.c
+index ae1af7c2f..c398282d3 100644
+--- a/testcases/kernel/syscalls/ptrace/simple_tracer.c
++++ b/testcases/kernel/syscalls/ptrace/simple_tracer.c
+@@ -8,6 +8,7 @@
+ 
+ #define _GNU_SOURCE
+ 
++#include <stdint.h>
+ #include <config.h>
+ 
+ #include <errno.h>

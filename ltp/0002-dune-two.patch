@@ -1,0 +1,360 @@
+From 6c846bdb9473f4d917c5f8a7a4fc92a35d022d53 Mon Sep 17 00:00:00 2001
+From: martins3 <hubachelar@gmail.com>
+Date: Tue, 27 Apr 2021 15:54:38 +0800
+Subject: [PATCH 2/6] dune:two
+
+---
+ .gitignore                                    |  2 +
+ add_dune_enter.sh                             | 37 +++++++++++++++++++
+ include/mk/env_post.mk                        |  9 +++++
+ include/mk/env_pre.mk                         |  1 +
+ include/mk/lib.mk                             | 12 ++++++
+ include/mk/rules.mk                           | 21 +++++++++++
+ lib/tst_test.c                                |  9 +++++
+ testcases/kernel/syscalls/nftw/Makefile       | 12 ++++++
+ testcases/kernel/syscalls/ptrace/ptrace01.c   |  1 +
+ testcases/kernel/syscalls/ptrace/ptrace02.c   |  1 +
+ testcases/kernel/syscalls/ptrace/ptrace03.c   |  1 +
+ testcases/kernel/syscalls/ptrace/ptrace04.c   |  1 +
+ testcases/kernel/syscalls/ptrace/ptrace05.c   |  1 +
+ testcases/kernel/syscalls/ptrace/ptrace11.c   |  1 +
+ .../kernel/syscalls/sethostname/Makefile      |  9 +++++
+ testcases/kernel/syscalls/utils/compat_16.mk  |  1 +
+ testcases/kernel/syscalls/utils/newer_64.mk   |  1 +
+ 17 files changed, 120 insertions(+)
+ create mode 100644 add_dune_enter.sh
+
+diff --git a/.gitignore b/.gitignore
+index 3efac384f..693cd6f6b 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -82,3 +82,5 @@ logfile.*
+ /lib/tests/tst_dataroot01
+ /lib/tests/tst_dataroot02
+ /lib/tests/tst_dataroot03
++
++.ccls-cache
+diff --git a/add_dune_enter.sh b/add_dune_enter.sh
+new file mode 100644
+index 000000000..de9378218
+--- /dev/null
++++ b/add_dune_enter.sh
+@@ -0,0 +1,37 @@
++#!/bin/bash
++
++set -e
++function add_dune_enter() {
++  dir=/home/loongson/ltp/testcases/kernel/syscalls/$1
++  for cfile in $dir/*.c; do
++    if [[ -f $cfile ]];then
++      echo $cfile
++      line=$(grep -n 'int main' $cfile | cut -d: -f 1)
++      if [[ -z $line ]];then
++        echo $cfile
++        echo "old trandition ?"
++      else
++        echo $cfile
++        echo $line
++        i=0
++        for line_num in $line;do
++          echo "i = $i"
++          let "next_line= $line_num + 2 + $i"
++          echo "next_line = $next_line"
++          # sed -n -e $line,"$next_line"p $cfile
++          sed -i "$next_line i #ifdef DUNE\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
++          i=$((i+5))
++        done
++      fi
++    else
++      echo "TODO : need special attension"
++    fi
++  done
++}
++
++for i in testcases/kernel/syscalls/*;do
++  if [[ -d $i ]];then
++    echo $i
++    add_dune_enter $i
++  fi
++done
+diff --git a/include/mk/env_post.mk b/include/mk/env_post.mk
+index 1d22f9c53..d9ddebdec 100644
+--- a/include/mk/env_post.mk
++++ b/include/mk/env_post.mk
+@@ -50,6 +50,15 @@ endif
+ MAKE_TARGETS			?= $(notdir $(patsubst %.c,%,$(sort $(wildcard $(abs_srcdir)/*.c))))
+ MAKE_TARGETS			:= $(filter-out $(FILTER_OUT_MAKE_TARGETS),$(MAKE_TARGETS))
+ 
++# tell install scripts to install dune-* too
++DUNE_MAKE_TARGETS := $(filter-out $(wildcard *.ko),$(MAKE_TARGETS))
++DUNE_MAKE_TARGETS	:= $(addprefix dune-, $(DUNE_MAKE_TARGETS))
++MAKE_TARGETS += $(DUNE_MAKE_TARGETS)
++
++$(info ===== $(DUNE_MAKE_TARGETS))
++$(info ===== $(MAKE_TARGETS))
++
++
+ # with only *.dwo, .[0-9]+.dwo can not be cleaned
+ CLEAN_TARGETS			+= $(MAKE_TARGETS) $(HOST_MAKE_TARGETS) *.o *.pyc .cache.mk *.dwo .*.dwo
+ 
+diff --git a/include/mk/env_pre.mk b/include/mk/env_pre.mk
+index f36215167..23e969e77 100644
+--- a/include/mk/env_pre.mk
++++ b/include/mk/env_pre.mk
+@@ -25,6 +25,7 @@
+ # This sets the stage for all operations required within Makefiles.
+ #
+ 
++SHELL := /bin/bash
+ ifndef ENV_PRE_LOADED
+ ENV_PRE_LOADED = 1
+ 
+diff --git a/include/mk/lib.mk b/include/mk/lib.mk
+index f9b6c0aff..afd006756 100644
+--- a/include/mk/lib.mk
++++ b/include/mk/lib.mk
+@@ -57,6 +57,14 @@ LIBSRCS		:= $(filter-out $(FILTER_OUT_LIBSRCS),$(LIBSRCS))
+ 
+ LIBOBJS		:= $(LIBSRCS:.c=.o)
+ 
++# create libduneltp.a
++ifeq ($(LIB),libltp.a)
++LIBOBJS   := $(notdir $(LIBOBJS))
++LIBOBJS_DUNE := $(filter-out tst_test.o ,$(LIBOBJS))
++LIBOBJS_DUNE := $(LIBOBJS_DUNE) dune_tst_test.o
++DUNE_LIB ?= libduneltp.a
++endif
++
+ $(LIB): $(notdir $(LIBOBJS))
+ 	@if [ -z "$(strip $^)" ] ; then \
+ 		echo "Cowardly refusing to create empty archive"; \
+@@ -70,6 +78,10 @@ else
+ 	@$(if $(AR),$(AR),ar) -rc "$@" $^
+ 	@echo "RANLIB $@"
+ 	@$(if $(RANLIB),$(RANLIB),ranlib) "$@"
++ifeq ($(LIB), libltp.a)
++	$(if $(AR),$(AR),ar) -rc $(DUNE_LIB) $(LIBOBJS_DUNE)
++	$(if $(RANLIB),$(RANLIB),ranlib) libduneltp.a
++endif
+ endif
+ 
+ include $(top_srcdir)/include/mk/generic_leaf_target.mk
+diff --git a/include/mk/rules.mk b/include/mk/rules.mk
+index c8f4bbbbe..622a52154 100644
+--- a/include/mk/rules.mk
++++ b/include/mk/rules.mk
+@@ -5,9 +5,18 @@ ifdef VERBOSE
+ 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
+ else
+ 	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
++	if [[ $(target_rel_dir) == *"testcases/kernel/syscalls"* ]]; then \
++		$(CC) $(CPPFLAGS) $(CFLAGS) -DDUNE -pthread -c -o "dune_$@" $< ; \
++	fi
+ 	@echo CC $(target_rel_dir)$@
+ endif
+ 
++tst_test.o:tst_test.c
++	@echo "tst_test is SPECIAL"
++	@$(CC) $(CPPFLAGS) $(CFLAGS) -DDUNE -pthread -c -o "dune_$@" $<
++	@$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
++	@echo CC $(target_rel_dir)$@
++
+ ifdef VERBOSE
+ COMPILE.c=$(CC) $(CPPFLAGS) $(CFLAGS) -c
+ else
+@@ -18,8 +27,15 @@ endif
+ ifdef VERBOSE
+ 	$(CC) $(LDFLAGS) $^ $(LTPLDLIBS) $(LDLIBS) -o $@
+ else
++	if [[ -f /home/loongson/ltp/$(target_rel_dir)dune_$< ]];then\
++		$(CC) $(LDFLAGS) -pthread "dune_$^" $(LTPLDLIBS) $(subst -lltp, -lduneltp, $(LDLIBS))  /home/loongson/dune/dune/libdune.a -o "dune-$@"; \
++	fi
+ 	@$(CC) $(LDFLAGS) $^ $(LTPLDLIBS) $(LDLIBS) -o $@
++
+ 	@echo LD $(target_rel_dir)$@
++	if [[ -f /home/loongson/ltp/$(target_rel_dir)dune_$< ]];then\
++		rm /home/loongson/ltp/$(target_rel_dir)dune_$<; \
++	fi
+ endif
+ 
+ $(HOST_MAKE_TARGETS): %: %.c
+@@ -34,6 +50,11 @@ endif
+ ifdef VERBOSE
+ 	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $^ $(LTPLDLIBS) $(LDLIBS) -o $@
+ else
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++		if [[ ! "$(LDLIBS)" == *"-lltpuinput"* ]]; then \
++			$(CC) $(CPPFLAGS) $(CFLAGS) -DDUNE -pthread $(LDFLAGS) $^ $(LTPLDLIBS) $(subst -lltp, -lduneltp, $(LDLIBS))  /home/loongson/dune/dune/libdune.a -o "dune-$@"; \
++		fi \
++	fi
+ 	@$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $^ $(LTPLDLIBS) $(LDLIBS) -o $@
+ 	@echo CC $(target_rel_dir)$@
+ endif
+diff --git a/lib/tst_test.c b/lib/tst_test.c
+index 907949ee5..efb4563f6 100644
+--- a/lib/tst_test.c
++++ b/lib/tst_test.c
+@@ -1334,6 +1334,15 @@ static int fork_testrun(void)
+ 		tst_brk(TBROK | TERRNO, "fork()");
+ 
+ 	if (!test_pid) {
++
++#ifdef DUNE
++    int dune_enter();
++    if(dune_enter()){
++      return 1;
++    }
++#endif
++
++
+ 		SAFE_SIGNAL(SIGALRM, SIG_DFL);
+ 		SAFE_SIGNAL(SIGUSR1, SIG_DFL);
+ 		SAFE_SIGNAL(SIGINT, SIG_DFL);
+diff --git a/testcases/kernel/syscalls/nftw/Makefile b/testcases/kernel/syscalls/nftw/Makefile
+index 04e2c43cb..a47a200f3 100644
+--- a/testcases/kernel/syscalls/nftw/Makefile
++++ b/testcases/kernel/syscalls/nftw/Makefile
+@@ -18,6 +18,12 @@ nftw01: CPPFLAGS += -D_LARGEFILE_SOURCE
+ 
+ nftw01: nftw.o tools.o test_func.o test.o lib.o 
+ 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) $(OUTPUT_OPTION)
++	$(MAKE) dune-nftw01
++
++dune-nftw01: dune_nftw.o dune_tools.o dune_test_func.o dune_test.o dune_lib.o 
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++		$(LINK.o) $^ $(LOADLIBES) -pthread $(subst -lltp, -lduneltp, $(LDLIBS)) /home/loongson/dune/dune/libdune.a $(OUTPUT_OPTION); \
++	fi
+ 
+ nftw64.o tools64.o test_func64.o test64.o lib64.o: %.o: %.c
+ 
+@@ -25,5 +31,11 @@ nftw64.o tools64.o test_func64.o test64.o lib64.o: %.o: %.c
+ 
+ nftw6401: nftw64.o tools64.o test_func64.o test64.o lib64.o
+ 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) $(OUTPUT_OPTION)
++	$(MAKE) dune-nftw6401
++
++dune-nftw6401: dune_nftw64.o dune_tools64.o dune_test_func64.o dune_test64.o dune_lib64.o
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++		$(LINK.o) $^ $(LOADLIBES) -pthread $(subst -lltp, -lduneltp, $(LDLIBS)) /home/loongson/dune/dune/libdune.a $(OUTPUT_OPTION); \
++	fi
+ 
+ include $(top_srcdir)/include/mk/generic_leaf_target.mk
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace01.c b/testcases/kernel/syscalls/ptrace/ptrace01.c
+index 9071bbaba..8c3d587af 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace01.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace01.c
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include <stdlib.h>
++#include <stdint.h>
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace02.c b/testcases/kernel/syscalls/ptrace/ptrace02.c
+index e330f459e..7649633f0 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace02.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace02.c
+@@ -8,6 +8,7 @@
+  */
+ 
+ #include <errno.h>
++#include <stdint.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+ #include <pwd.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace03.c b/testcases/kernel/syscalls/ptrace/ptrace03.c
+index b2b3fb49d..6639cd3e5 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace03.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace03.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <errno.h>
++#include <stdint.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+ #include <pwd.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace04.c b/testcases/kernel/syscalls/ptrace/ptrace04.c
+index af35fb3a2..fdb62417e 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace04.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace04.c
+@@ -10,6 +10,7 @@
+ 
+ #include <errno.h>
+ #include <stdbool.h>
++#include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace05.c b/testcases/kernel/syscalls/ptrace/ptrace05.c
+index 54cfa4d7b..15308815b 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace05.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace05.c
+@@ -23,6 +23,7 @@
+  ******************************************************************************
+  */
+ 
++#include <stdint.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <signal.h>
+diff --git a/testcases/kernel/syscalls/ptrace/ptrace11.c b/testcases/kernel/syscalls/ptrace/ptrace11.c
+index c54441671..6ac97dd7c 100644
+--- a/testcases/kernel/syscalls/ptrace/ptrace11.c
++++ b/testcases/kernel/syscalls/ptrace/ptrace11.c
+@@ -12,6 +12,7 @@
+  * successfully.
+  */
+ 
++#include <stdint.h>
+ #include <errno.h>
+ #include <signal.h>
+ #include <sys/wait.h>
+diff --git a/testcases/kernel/syscalls/sethostname/Makefile b/testcases/kernel/syscalls/sethostname/Makefile
+index 71d21c5ab..7474c0504 100644
+--- a/testcases/kernel/syscalls/sethostname/Makefile
++++ b/testcases/kernel/syscalls/sethostname/Makefile
+@@ -10,12 +10,21 @@ CPPFLAGS += -DTEST_SETHOSTNAME
+ 
+ sethostname01: $(abs_srcdir)/../setdomainname/setdomainname01.c
+ 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(OUTPUT_OPTION)
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++			$(LINK.c) -pthread $^ $(LOADLIBES) $(subst -lltp, -lduneltp, $(LDLIBS))  /home/loongson/dune/dune/libdune.a -o "dune-$@"; \
++	fi
+ 
+ sethostname02: $(abs_srcdir)/../setdomainname/setdomainname02.c
+ 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(OUTPUT_OPTION)
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++			$(LINK.c) -pthread $^ $(LOADLIBES) $(subst -lltp, -lduneltp, $(LDLIBS))  /home/loongson/dune/dune/libdune.a -o "dune-$@"; \
++	fi
+ 
+ sethostname03: $(abs_srcdir)/../setdomainname/setdomainname03.c
+ 	$(LINK.c) $^ $(LOADLIBES) $(LDLIBS) $(OUTPUT_OPTION)
++	if [[ "$(LDLIBS)" == *"-lltp"* ]]; then \
++			$(LINK.c) -pthread $^ $(LOADLIBES) $(subst -lltp, -lduneltp, $(LDLIBS))  /home/loongson/dune/dune/libdune.a -o "dune-$@"; \
++	fi
+ 
+ MAKE_TARGETS := sethostname01 sethostname02 sethostname03
+ 
+diff --git a/testcases/kernel/syscalls/utils/compat_16.mk b/testcases/kernel/syscalls/utils/compat_16.mk
+index e81a00c40..f8d6bf464 100644
+--- a/testcases/kernel/syscalls/utils/compat_16.mk
++++ b/testcases/kernel/syscalls/utils/compat_16.mk
+@@ -76,3 +76,4 @@ endif
+ 
+ %_16.o: %.c $(COMPAT_16_H)
+ 	$(COMPILE.c) $(OUTPUT_OPTION) $<
++	$(COMPILE.c) -o dune_$@ $<
+diff --git a/testcases/kernel/syscalls/utils/newer_64.mk b/testcases/kernel/syscalls/utils/newer_64.mk
+index 5e798057a..11c40da1b 100644
+--- a/testcases/kernel/syscalls/utils/newer_64.mk
++++ b/testcases/kernel/syscalls/utils/newer_64.mk
+@@ -53,3 +53,4 @@ endif
+ 
+ %_64.o: %.c
+ 	$(COMPILE.c) $(OUTPUT_OPTION) $<
++	$(COMPILE.c) -o dune_$@ $<
+-- 
+2.20.1
+

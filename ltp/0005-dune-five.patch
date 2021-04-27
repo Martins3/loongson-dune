@@ -1,0 +1,16 @@
+From f4e6d0e98fff4e8ad7c688fbfdd8d2c55313f525 Mon Sep 17 00:00:00 2001
+From: martins3 <hubachelar@gmail.com>
+Date: Tue, 27 Apr 2021 16:14:01 +0800
+Subject: [PATCH 5/6] dune:five
+
+---
+ generate_runtest.sh | 0
+ 1 file changed, 0 insertions(+), 0 deletions(-)
+ mode change 100644 => 100755 generate_runtest.sh
+
+diff --git a/generate_runtest.sh b/generate_runtest.sh
+old mode 100644
+new mode 100755
+-- 
+2.20.1
+
