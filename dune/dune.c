@@ -148,8 +148,11 @@ struct kvm_cpu *kvm_alloc_vcpu(struct kvm_vm *kvm)
 	vcpu->cpu_id = cpu_id;
 
 	vcpu->vcpu_fd = ioctl(vcpu->vm->vm_fd, KVM_CREATE_VCPU, vcpu->cpu_id);
-	if (vcpu->vcpu_fd < 0)
+	if (vcpu->vcpu_fd < 0){
 		die("KVM_CREATE_VCPU ioctl");
+  }else{
+    pr_info("KVM_CREATE_VCPU");
+  }
 
 	vcpu->kvm_run = mmap(NULL, kvm->kvm_run_mmap_size, PROT_RW, MAP_SHARED,
 			     vcpu->vcpu_fd, 0);
@@ -191,14 +194,14 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		die("unable to open %s", dev_path);
 	} else {
 		vm->sys_fd = ret;
-		pr_info("open %s", dev_path);
+    // pr_info("open %s", dev_path);
 	}
 
 	ret = ioctl(vm->sys_fd, KVM_GET_API_VERSION, 0);
 	if (ret != KVM_API_VERSION) {
 		die("KVM_GET_API_VERSION");
 	} else {
-		pr_info("KVM_GET_API_VERSION");
+		// pr_info("KVM_GET_API_VERSION");
 	}
 
 	ret = ioctl(vm->sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
@@ -206,7 +209,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		die("KVM_CREATE_VM");
 	} else {
 		vm->vm_fd = ret;
-		pr_info("KVM_CREATE_VM");
+    pr_info("KVM_CREATE_VM");
 	}
 
 	int mmap_size = ioctl(vm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
@@ -227,7 +230,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 	if (ret < 0) {
 		die("KVM_SET_USER_MEMORY_REGION");
 	} else {
-		pr_info("KVM_SET_USER_MEMORY_REGION");
+		// pr_info("KVM_SET_USER_MEMORY_REGION");
 	}
 
 #ifdef DUNE_DEBUG
@@ -300,7 +303,7 @@ void expand_stack()
 {
 	u64 limit = expand_stack_getrlimit();
 	u64 top = expand_stack_get_stack_top();
-	pr_info("top = %llx, limit = %llx", top, limit);
+	// pr_info("top = %llx, limit = %llx", top, limit);
 	*(int *)(top - limit) = 0;
 }
 

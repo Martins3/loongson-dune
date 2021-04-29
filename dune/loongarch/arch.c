@@ -167,8 +167,7 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	    0)
 		die("KVM_GET_REGS");
 
-	parent_cpu->info.era =
-		kvm_get_csr_reg(parent_cpu, KVM_CSR_EPC);
+	parent_cpu->info.era = kvm_get_csr_reg(parent_cpu, KVM_CSR_EPC);
 
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
@@ -219,9 +218,9 @@ static void init_ebase(struct kvm_cpu *cpu)
 	       syscall_entry_end - syscall_entry_begin);
 	// memcpy(cpu->info.ebase + ERREBASE_OFFSET, err_entry_begin,
 	// err_entry_end - err_entry_begin);
-  
-	pr_info("ebase address : %llx", cpu->info.ebase);
-	pr_info("ebase address : %llx", cpu->info.ebase + VEC_SIZE * EXCCODE_SYS);
+
+	// pr_info("ebase address : %llx", cpu->info.ebase);
+	// pr_info("ebase address : %llx", cpu->info.ebase + VEC_SIZE * EXCCODE_SYS);
 }
 
 struct csr_reg {
@@ -242,13 +241,13 @@ static void init_csr(struct kvm_cpu *cpu)
 
 	u64 INIT_VALUE_DMWIN1 = CSR_DMW1_INIT;
 	u64 INIT_VALUE_KSCRATCH5 = (u64)cpu->syscall_parameter + CSR_DMW1_BASE;
-  u64 INIT_VALUE_KSCRATCH6 = TLBRELO0_STANDARD_BITS;
+	u64 INIT_VALUE_KSCRATCH6 = TLBRELO0_STANDARD_BITS;
 	u64 INIT_VALUE_KSCRATCH7 = TLBRELO1_STANDARD_BITS;
 
 	u64 INIT_VALUE_TLBREBASE = (u64)cpu->info.ebase;
 	u64 INIT_VALUE_EBASE = (u64)cpu->info.ebase;
 
-	// FIXME 从手册和内核上，都是 tid 代替 cpuid 的感觉，kvm 中将会将 tid 初始化为 cpu->cpu_id
+	// TODO 并没有什么意义
 	u64 INIT_VALUE_CPUNUM = cpu->cpu_id;
 
 	struct csr_reg one_regs[] = {
@@ -305,7 +304,6 @@ static void init_csr(struct kvm_cpu *cpu)
 		// CSR_INIT_REG(TLBRELO1),
 		// CSR_INIT_REG(TLBREHI),
 		// CSR_INIT_REG(TLBRPRMD),
-		// 按照现在的涉及，guest 中间不应该出现 merr
 		// CSR_INIT_REG(ERRCTL),
 		// CSR_INIT_REG(ERRINFO1),
 		// CSR_INIT_REG(ERRINFO2),
@@ -358,8 +356,8 @@ static void init_csr(struct kvm_cpu *cpu)
 		    0) {
 			die("KVM_SET_ONE_REG %s", one_regs[i].name);
 		} else {
-      // pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
-      // one_regs[i].v);
+			// pr_info("KVM_SET_ONE_REG %s : %llx", one_regs[i].name,
+			// one_regs[i].v);
 		}
 	}
 }
@@ -367,7 +365,7 @@ static void init_csr(struct kvm_cpu *cpu)
 static int __attribute__((noinline))
 kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 {
-  BUILD_ASSERT(offsetof(struct kvm_regs, pc) == 256);
+	BUILD_ASSERT(offsetof(struct kvm_regs, pc) == 256);
 	asm goto("\n\t"
 		 "st.d $r0,  $r5, 0\n\t"
 		 "st.d $r1,  $r5, 8\n\t"
@@ -410,7 +408,7 @@ kvm_launch(struct kvm_cpu *cpu, struct kvm_regs *regs)
 		 : "memory"
 		 : guest_entry);
 
-	arch_dump_regs(STDOUT_FILENO, *regs);
+	// arch_dump_regs(STDOUT_FILENO, *regs);
 
 	init_ebase(cpu);
 	init_csr(cpu);
@@ -436,8 +434,9 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 }
 
 // a7($r11) 是作为 syscall number
-u64 arch_get_sysno(const struct kvm_cpu *cpu){
-  return cpu->syscall_parameter[7];
+u64 arch_get_sysno(const struct kvm_cpu *cpu)
+{
+	return cpu->syscall_parameter[7];
 }
 #define __SYSCALL_CLOBBERS                                                     \
 	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
@@ -522,7 +521,8 @@ void escape()
 
 u64 __do_simulate_clone(u64, u64, u64, u64, u64, u64);
 
-void do_simulate_clone(struct kvm_cpu *parent_cpu, const struct kvm_cpu * child_cpu, u64 child_host_stack)
+void do_simulate_clone(struct kvm_cpu *parent_cpu,
+		       const struct kvm_cpu *child_cpu, u64 child_host_stack)
 {
 	u64 arg0 = parent_cpu->syscall_parameter[0];
 	// u64 a1 = parent_cpu->syscall_parameter[1];
@@ -531,8 +531,8 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu, const struct kvm_cpu * child_
 	u64 arg4 = parent_cpu->syscall_parameter[4];
 
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid =
-		__do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4, (u64)child_cpu);
+	long child_pid = __do_simulate_clone(arg0, child_host_stack, arg2, arg3,
+					     arg4, (u64)child_cpu);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;
