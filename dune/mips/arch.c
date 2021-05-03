@@ -553,3 +553,27 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
 		parent_cpu->syscall_parameter[4] = 1;
 	}
 }
+
+bool arch_is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
+{
+	if (sysno == SYS_FORK)
+		return false;
+
+	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
+	if (sysno == SYS_CLONE)
+		return parent_cpu->syscall_parameter[1] & CLONE_VM;
+
+	if (sysno == SYS_CLONE3) {
+		struct clone3_args *args =
+			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
+		return args->flags | CLONE_VM;
+	}
+
+	die("impossible");
+	return false;
+}
+
+u64 arch_get_sysno(const struct kvm_cpu *cpu)
+{
+	return cpu->syscall_parameter[0];
+}

@@ -438,6 +438,18 @@ u64 arch_get_sysno(const struct kvm_cpu *cpu)
 {
 	return cpu->syscall_parameter[7];
 }
+
+bool arch_is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
+{
+	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
+	if (sysno == SYS_CLONE)
+		return parent_cpu->syscall_parameter[0] & CLONE_VM;
+
+	die("impossible sysno");
+	return false;
+}
+
+
 #define __SYSCALL_CLOBBERS                                                     \
 	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
 

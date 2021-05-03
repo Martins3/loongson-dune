@@ -148,11 +148,11 @@ struct kvm_cpu *kvm_alloc_vcpu(struct kvm_vm *kvm)
 	vcpu->cpu_id = cpu_id;
 
 	vcpu->vcpu_fd = ioctl(vcpu->vm->vm_fd, KVM_CREATE_VCPU, vcpu->cpu_id);
-	if (vcpu->vcpu_fd < 0){
+	if (vcpu->vcpu_fd < 0) {
 		die("KVM_CREATE_VCPU ioctl");
-  }else{
-    pr_info("KVM_CREATE_VCPU");
-  }
+	} else {
+		pr_info("KVM_CREATE_VCPU");
+	}
 
 	vcpu->kvm_run = mmap(NULL, kvm->kvm_run_mmap_size, PROT_RW, MAP_SHARED,
 			     vcpu->vcpu_fd, 0);
@@ -194,7 +194,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		die("unable to open %s", dev_path);
 	} else {
 		vm->sys_fd = ret;
-    // pr_info("open %s", dev_path);
+		// pr_info("open %s", dev_path);
 	}
 
 	ret = ioctl(vm->sys_fd, KVM_GET_API_VERSION, 0);
@@ -209,7 +209,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		die("KVM_CREATE_VM");
 	} else {
 		vm->vm_fd = ret;
-    pr_info("KVM_CREATE_VM");
+		pr_info("KVM_CREATE_VM");
 	}
 
 	int mmap_size = ioctl(vm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
@@ -234,7 +234,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 	}
 
 #ifdef DUNE_DEBUG
-	vm->debug_fd = open("syscall.txt", O_TRUNC | O_WRONLY | O_CREAT, 0644);
+	vm->debug_fd = open("strace.txt", O_TRUNC | O_WRONLY | O_CREAT, 0644);
 	if (vm->debug_fd == -1) {
 		perror("open failed");
 		exit(1);
@@ -336,25 +336,6 @@ struct child_args {
 	struct kvm_cpu *cpu;
 };
 
-bool is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
-{
-	if (sysno == SYS_FORK)
-		return false;
-
-	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
-	if (sysno == SYS_CLONE)
-		return parent_cpu->syscall_parameter[1] & CLONE_VM;
-
-	if (sysno == SYS_CLONE3) {
-		struct clone3_args *args =
-			(struct clone3_args *)(parent_cpu->syscall_parameter[1]);
-		return args->flags | CLONE_VM;
-	}
-
-	die("unexpected sysno");
-	return false;
-}
-
 struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
@@ -369,9 +350,12 @@ struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
 	if (arch_do_syscall(parent_cpu, true)) {
+    printf("child pid=%d\n", getpid());
+    sleep(100);
 		return dup_vm(parent_cpu, sysno);
 	}
 	// parent return null
+  sleep(100);
 	return NULL;
 }
 
@@ -387,6 +371,9 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
+    // TODO MIPS 架构下对应的汇编也需要修改
+    // 1. 能不能构建一个通用的汇编框架 : 还是老样子吧，只是最多支持多少个参数而已
+    //
 		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
 		// in init_child_thread_info, set up the `a0` regs
@@ -405,10 +392,11 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
 struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
-	if (is_vm_shared(parent_cpu, sysno))
+	if (arch_is_vm_shared(parent_cpu, sysno)) {
 		return emulate_fork_by_two_vcpu(parent_cpu, sysno);
-	else
+	} else {
 		return emulate_fork_by_two_vm(parent_cpu, sysno);
+	}
 }
 
 void host_loop(struct kvm_cpu *vcpu)
@@ -436,11 +424,12 @@ void host_loop(struct kvm_cpu *vcpu)
 
 #ifdef DUNE_DEBUG
 		dprintf(vcpu->vm->debug_fd,
-			"vcpu=%d sysno=%ld:  %llx %llx %llx %llx %llx %llx\n",
-			vcpu->cpu_id, sysno, vcpu->syscall_parameter[1],
+			"vcpu=%d sysno=%llx\n%08llx %08llx %08llx %08llx\n%08llx %08llx %08llx %08llx\n\n",
+			vcpu->cpu_id, sysno,
+			vcpu->syscall_parameter[0], vcpu->syscall_parameter[1],
 			vcpu->syscall_parameter[2], vcpu->syscall_parameter[3],
 			vcpu->syscall_parameter[4], vcpu->syscall_parameter[5],
-			vcpu->syscall_parameter[6]);
+			vcpu->syscall_parameter[6], vcpu->syscall_parameter[7]);
 #endif
 
 		// exit_group will destroy the vm, so don't bother to remove vcpu

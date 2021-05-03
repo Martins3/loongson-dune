@@ -119,7 +119,8 @@ struct clone3_args {
 
 void arch_dune_enter(struct kvm_cpu *cpu);
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack);
-u64 arch_get_sysno(const struct kvm_cpu *cpu); // FIXME implement mips version
+u64 arch_get_sysno(const struct kvm_cpu *cpu);
+bool arch_is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno);
 bool arch_do_syscall(struct kvm_cpu *cpu, bool is_fork);
 void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu);
 // 设置 child 的 tls, stack, host_loop 的参数 vcpu
