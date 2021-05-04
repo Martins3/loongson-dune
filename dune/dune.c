@@ -329,7 +329,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	return child_cpu;
 }
 
-struct kvm_cpu * dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
+struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
@@ -340,10 +340,11 @@ struct kvm_cpu * dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 	return child_cpu;
 }
 
-struct kvm_cpu * fork_child_entry(const struct kvm_cpu *parent_cpu, int sysno){
-  struct kvm_cpu * child_cpu = dup_vm(parent_cpu, sysno);
-  host_loop(child_cpu);
-  die("host_loop never return\n");
+struct kvm_cpu *fork_child_entry(const struct kvm_cpu *parent_cpu, int sysno)
+{
+	struct kvm_cpu *child_cpu = dup_vm(parent_cpu, sysno);
+	host_loop(child_cpu);
+	die("host_loop never return\n");
 }
 
 struct kvm_cpu *emulate_fork_diff_vm_old_stack(struct kvm_cpu *parent_cpu,
@@ -391,7 +392,7 @@ struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 }
 
 typedef struct kvm_cpu *(*FORK_CHILD_ENTRY)(const struct kvm_cpu *parent_cpu,
-					int sysno);
+					    int sysno);
 
 struct jump_to_dup_vm {
 	FORK_CHILD_ENTRY entry;
