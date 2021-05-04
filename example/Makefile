@@ -1,5 +1,5 @@
 TESTSRCS ?= $(wildcard *.c)
-TEST := $(TESTSRCS:.c=)
+TARGET := $(patsubst %.c, %.out, $(TESTSRCS))
 
 LIBDIR := ../dune
 
@@ -18,11 +18,13 @@ DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
 CFLAGS      += -g -pthread -ldl
 
 # $(info $(DEPS) )
-# $(info $(TEST) )
+$(info $(TARGET) )
 
-all:$(TEST)
+all:$(TARGET)
 
-%: %.c $(DEPS)
+$(TARGET): %.out: %.c
+
+%.out: %.c $(DEPS)
 	$(MAKE) -C $(LIBDIR)
 	$(CC) $(CFLAGS) -I$(LIBDIR) $(LDLIBS) $< $(LIBDUNE) -o $@
 
