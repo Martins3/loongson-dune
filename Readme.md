@@ -1,9 +1,11 @@
 # Loongson Dune
 
 ## Project status
-- MIPS arch finished and pass all the Linux Test Suite syscall tests. 😀
-- Loongarch is under construction. 😀
-- X86 may be supported soon. 📅
+| arch      | status |
+|-----------|--------|
+| MIPS      | 😀     |
+| Loongarch | 😀     |
+| X86       | 📅     |
 
 You have a Loonson 3A4000 Computer, you can checkout to `mips-finished` tag and play with the code.
 
@@ -34,12 +36,12 @@ kernel log when accessing a unmapped area.
     2. maximum fd one process can open would be less than expected.
 
 3. `KVM_MAX_VCPU` limits the dune threads.
+    1. Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu number. So the program shouldn't create more than `KVM_MAX_VCPU` threads simultaneously. But one process create vcpu and then release it, it can do it over and over again.
 
 4. signal handler is will executed in host
     1. why : signal handler is executed when return from syscall or interrupt, in dune, it means host's syscall/interrupt return
     2. so what : profil(3) is based on signal handler in which pc is sampled. What is sampled in fact is host process's pc.
 
-Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu number. So the program shouldn't create more than `KVM_MAX_VCPU` threads simultaneously.
 
 ## Advantage over Standford Dune
 1. No kernel module.
