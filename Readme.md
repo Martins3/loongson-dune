@@ -33,6 +33,10 @@ kernel log when accessing a unmapped area.
 
 3. `KVM_MAX_VCPU` limits the dune threads.
 
+4. signal handler is will executed in host
+    1. why : signal handler is executed when return from syscall or interrupt, in dune, it means host's syscall/interrupt return
+    2. so what : profil(3) is based on signal handler in which pc is sampled. What is sampled in fact is host process's pc.
+
 Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu number. So the program shouldn't create more than `KVM_MAX_VCPU` threads simultaneously.
 
 ## Advantage over Standford Dune
@@ -44,8 +48,8 @@ Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu numbe
 5. Nested Dune.
 6. Support multiple architectures.
 7. Support fork related syscall, multi-thread program works almost perfectly.
-9. Less code, only about 2000 loc.
 8. Much more stable.
+9. Less code, only about 1200 loc for one arch(Loongarch).
 
 ## Disadvantage
 Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduce.
@@ -56,7 +60,18 @@ fork/clone/vfork simulation very slow, because we have create many vm and vcpu.
 2. When guest invoke syscall, it will be directed to hyerpcall and escape to host, then the syscall simulated in host userspace.
 
 #### fork/clone
-KVM disallow fork() and similar games when using a VM, so we should create another vm for child process when child doesn't share the VM.
+1. KVM disallow fork() and similar games when using a VM, so we should create another vm for child process when child doesn't share the VM.
+2. if child run in a new stack, it can't access local variable anymore, so we need some handcrafted assembly code to handle it.
+
+So there are three types of fork/clone simulation:
+```c
+enum CLONE_TYPE{
+  SAME_VM, // Create vcpu firstly, and do the clone by assembly code
+  DIFF_VM_NEW_STACK, // do the fork by assembly code, then create another vm
+  DIFF_VM_OLD_STACk, // do the fork, then create another vm
+};
+```
+
 ```c
 static long kvm_vcpu_ioctl(struct file *filp,
 			   unsigned int ioctl, unsigned long arg)

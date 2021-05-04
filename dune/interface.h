@@ -118,9 +118,9 @@ struct clone3_args {
 };
 
 enum CLONE_TYPE{
-  SAME_VM,
-  DIFF_VM_NEW_STACK,
-  DIFF_VM_OLD_STACk,
+  SAME_VM, // Create vcpu firstly, and do the clone by assembly code
+  DIFF_VM_NEW_STACK, // do the fork by assembly code, then create another vm
+  DIFF_VM_OLD_STACk, // do the fork, then create another vm
 };
 
 void arch_dune_enter(struct kvm_cpu *cpu);
