@@ -1,28 +1,24 @@
-From 6c846bdb9473f4d917c5f8a7a4fc92a35d022d53 Mon Sep 17 00:00:00 2001
-From: martins3 <hubachelar@gmail.com>
-Date: Tue, 27 Apr 2021 15:54:38 +0800
-Subject: [PATCH 2/6] dune:two
+From 0904d70ddcb2052c530b99a98bba6f4c7c368b45 Mon Sep 17 00:00:00 2001
+From: xueshi hu <hubachelar@gmail.com>
+Date: Tue, 4 May 2021 14:27:00 +0800
+Subject: [PATCH] dune
 
 ---
- .gitignore                                    |  2 +
- add_dune_enter.sh                             | 37 +++++++++++++++++++
+ .gitignore                                    |  2 ++
+ add_dune_enter.sh                             | 36 +++++++++++++++++++
+ generate_runtest.sh                           | 27 ++++++++++++++
  include/mk/env_post.mk                        |  9 +++++
  include/mk/env_pre.mk                         |  1 +
- include/mk/lib.mk                             | 12 ++++++
+ include/mk/lib.mk                             | 12 +++++++
  include/mk/rules.mk                           | 21 +++++++++++
  lib/tst_test.c                                |  9 +++++
- testcases/kernel/syscalls/nftw/Makefile       | 12 ++++++
- testcases/kernel/syscalls/ptrace/ptrace01.c   |  1 +
- testcases/kernel/syscalls/ptrace/ptrace02.c   |  1 +
- testcases/kernel/syscalls/ptrace/ptrace03.c   |  1 +
- testcases/kernel/syscalls/ptrace/ptrace04.c   |  1 +
- testcases/kernel/syscalls/ptrace/ptrace05.c   |  1 +
- testcases/kernel/syscalls/ptrace/ptrace11.c   |  1 +
+ testcases/kernel/syscalls/nftw/Makefile       | 12 +++++++
  .../kernel/syscalls/sethostname/Makefile      |  9 +++++
  testcases/kernel/syscalls/utils/compat_16.mk  |  1 +
  testcases/kernel/syscalls/utils/newer_64.mk   |  1 +
- 17 files changed, 120 insertions(+)
- create mode 100644 add_dune_enter.sh
+ 12 files changed, 140 insertions(+)
+ create mode 100755 add_dune_enter.sh
+ create mode 100755 generate_runtest.sh
 
 diff --git a/.gitignore b/.gitignore
 index 3efac384f..693cd6f6b 100644
@@ -35,17 +31,16 @@ index 3efac384f..693cd6f6b 100644
 +
 +.ccls-cache
 diff --git a/add_dune_enter.sh b/add_dune_enter.sh
-new file mode 100644
-index 000000000..de9378218
+new file mode 100755
+index 000000000..2608b66c8
 --- /dev/null
 +++ b/add_dune_enter.sh
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,36 @@
 +#!/bin/bash
 +
 +set -e
 +function add_dune_enter() {
-+  dir=/home/loongson/ltp/testcases/kernel/syscalls/$1
-+  for cfile in $dir/*.c; do
++  for cfile in $1/*.c; do
 +    if [[ -f $cfile ]];then
 +      echo $cfile
 +      line=$(grep -n 'int main' $cfile | cut -d: -f 1)
@@ -61,8 +56,8 @@ index 000000000..de9378218
 +          let "next_line= $line_num + 2 + $i"
 +          echo "next_line = $next_line"
 +          # sed -n -e $line,"$next_line"p $cfile
-+          sed -i "$next_line i #ifdef DUNE\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
-+          i=$((i+5))
++          sed -i "$next_line i #ifdef DUNE\nint dune_enter();\n if(dune_enter()){\n return 1;\n }\n#endif" $cfile
++          i=$((i+6))
 +        done
 +      fi
 +    else
@@ -77,6 +72,39 @@ index 000000000..de9378218
 +    add_dune_enter $i
 +  fi
 +done
+diff --git a/generate_runtest.sh b/generate_runtest.sh
+new file mode 100755
+index 000000000..f335f0da2
+--- /dev/null
++++ b/generate_runtest.sh
+@@ -0,0 +1,27 @@
++#!/bin/bash
++if [[ $(whoami) == "loongson" ]];then
++INPUT_FILE=/home/loongson/ltp/runtest/syscalls
++OUTPUT=/home/loongson/ltp/runtest/syscalls-dune
++else 
++INPUT_FILE=/home/maritns3/core/5000/ltp/runtest/syscalls
++OUTPUT=/home/maritns3/core/5000/ltp/runtest/syscalls-dune
++fi
++
++if [[ ! -f $INPUT_FILE ]]; then
++  echo "$INPUT_FILE not found"
++  exit 1
++fi
++
++rm -f $OUTPUT
++var=1
++
++while read -r line; do
++  if [[ -z $line ]];then
++    echo "" >> $OUTPUT
++    continue
++  fi
++  words=( $line )
++  echo "${words[0]} dune-${words[1]} ${words[@]:2}" >> $OUTPUT
++  var=$((var + 1))
++done < $INPUT_FILE
++echo $var
 diff --git a/include/mk/env_post.mk b/include/mk/env_post.mk
 index 1d22f9c53..d9ddebdec 100644
 --- a/include/mk/env_post.mk
@@ -239,78 +267,6 @@ index 04e2c43cb..a47a200f3 100644
 +	fi
  
  include $(top_srcdir)/include/mk/generic_leaf_target.mk
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace01.c b/testcases/kernel/syscalls/ptrace/ptrace01.c
-index 9071bbaba..8c3d587af 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace01.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace01.c
-@@ -23,6 +23,7 @@
-  */
- 
- #include <stdlib.h>
-+#include <stdint.h>
- #include <errno.h>
- #include <signal.h>
- #include <sys/wait.h>
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace02.c b/testcases/kernel/syscalls/ptrace/ptrace02.c
-index e330f459e..7649633f0 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace02.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace02.c
-@@ -8,6 +8,7 @@
-  */
- 
- #include <errno.h>
-+#include <stdint.h>
- #include <signal.h>
- #include <sys/wait.h>
- #include <pwd.h>
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace03.c b/testcases/kernel/syscalls/ptrace/ptrace03.c
-index b2b3fb49d..6639cd3e5 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace03.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace03.c
-@@ -11,6 +11,7 @@
-  */
- 
- #include <errno.h>
-+#include <stdint.h>
- #include <signal.h>
- #include <sys/wait.h>
- #include <pwd.h>
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace04.c b/testcases/kernel/syscalls/ptrace/ptrace04.c
-index af35fb3a2..fdb62417e 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace04.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace04.c
-@@ -10,6 +10,7 @@
- 
- #include <errno.h>
- #include <stdbool.h>
-+#include <stdint.h>
- #include <stdio.h>
- #include <stdlib.h>
- #include <unistd.h>
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace05.c b/testcases/kernel/syscalls/ptrace/ptrace05.c
-index 54cfa4d7b..15308815b 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace05.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace05.c
-@@ -23,6 +23,7 @@
-  ******************************************************************************
-  */
- 
-+#include <stdint.h>
- #include <sys/types.h>
- #include <sys/wait.h>
- #include <signal.h>
-diff --git a/testcases/kernel/syscalls/ptrace/ptrace11.c b/testcases/kernel/syscalls/ptrace/ptrace11.c
-index c54441671..6ac97dd7c 100644
---- a/testcases/kernel/syscalls/ptrace/ptrace11.c
-+++ b/testcases/kernel/syscalls/ptrace/ptrace11.c
-@@ -12,6 +12,7 @@
-  * successfully.
-  */
- 
-+#include <stdint.h>
- #include <errno.h>
- #include <signal.h>
- #include <sys/wait.h>
 diff --git a/testcases/kernel/syscalls/sethostname/Makefile b/testcases/kernel/syscalls/sethostname/Makefile
 index 71d21c5ab..7474c0504 100644
 --- a/testcases/kernel/syscalls/sethostname/Makefile
@@ -356,5 +312,5 @@ index 5e798057a..11c40da1b 100644
  	$(COMPILE.c) $(OUTPUT_OPTION) $<
 +	$(COMPILE.c) -o dune_$@ $<
 -- 
-2.20.1
+2.25.1
 

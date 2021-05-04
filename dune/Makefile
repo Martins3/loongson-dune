@@ -1,4 +1,4 @@
-CFLAGS := -g -DLOONGSON -static -DDUNE_DEBUG
+CFLAGS := -g -DLOONGSON -static
 CFLAGS += -pthread
 
 # CC=/usr/local/musl/bin/musl-gcc
