@@ -45,12 +45,12 @@ Loonson dune simulated one thread in the one vcpu, but kvm limits the vcpu numbe
 6. Support multiple architectures.
 7. Support fork related syscall, multi-thread program works almost perfectly.
 9. Less code, only about 2000 loc.
-8. Much more stable
-
+8. Much more stable.
 
 ## Disadvantage
 Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduce.
 
+fork/clone/vfork simulation very slow, because we have create many vm and vcpu.
 ## Design explanation
 1. In guest, gva mapped to gpa 1:1, so process "feels" the address space is same even jump into dune
 2. When guest invoke syscall, it will be directed to hyerpcall and escape to host, then the syscall simulated in host userspace.
@@ -83,17 +83,5 @@ static long kvm_vcpu_ioctl(struct file *filp,
 
  Signed-off-by: Avi Kivity <avi@qumranet.com>
 ```
-
-- kvm_get_parent_thread_info
-- emulate_fork
-  - emulate_fork_by_two_vcpu
-    - dup_vcpu
-      - kvm_alloc_vcpu
-    - **init_child_thread_info**
-  - emulate_fork_by_two_vm
-    - do_syscall
-    - dup_vm
-      - kvm_init_vm_with_one_cpu
-      - **init_child_thread_info**
 
 In `init_child_thread_info`, the child's gpr, especially the stack pointer, tls register and pc will be initilized.
