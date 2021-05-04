@@ -329,14 +329,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 	return child_cpu;
 }
 
-typedef void (*CHILD_ENTRY_PTR)(struct kvm_cpu *cpu);
-
-struct child_args {
-	CHILD_ENTRY_PTR entry;
-	struct kvm_cpu *cpu;
-};
-
-struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
+struct kvm_cpu * dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
@@ -347,21 +340,30 @@ struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 	return child_cpu;
 }
 
-struct kvm_cpu *emulate_fork_by_two_vm(struct kvm_cpu *parent_cpu, int sysno)
+struct kvm_cpu * fork_child_entry(const struct kvm_cpu *parent_cpu, int sysno){
+  struct kvm_cpu * child_cpu = dup_vm(parent_cpu, sysno);
+  host_loop(child_cpu);
+  die("host_loop never return\n");
+}
+
+struct kvm_cpu *emulate_fork_diff_vm_old_stack(struct kvm_cpu *parent_cpu,
+					       int sysno)
 {
 	if (arch_do_syscall(parent_cpu, true)) {
-    printf("child pid=%d\n", getpid());
-    sleep(100);
 		return dup_vm(parent_cpu, sysno);
 	}
 	// parent return null
-  sleep(100);
 	return NULL;
 }
 
-void child_entry(struct kvm_cpu *cpu);
+typedef void (*CLONE_CHILD_ENTRY)(struct kvm_cpu *cpu);
 
-struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
+struct jump_to_host_loop {
+	CLONE_CHILD_ENTRY entry;
+	struct kvm_cpu *cpu;
+};
+
+struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 {
 	// without CLONE_VM
 	// 1. creating one vcpu is enough
@@ -371,31 +373,66 @@ struct kvm_cpu *emulate_fork_by_two_vcpu(struct kvm_cpu *parent_cpu, int sysno)
 		die("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
-    // TODO MIPS 架构下对应的汇编也需要修改
-    // 1. 能不能构建一个通用的汇编框架 : 还是老样子吧，只是最多支持多少个参数而已
-    //
-		// check musl/src/thread/mips64/clone.s to understand code below
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-		// in init_child_thread_info, set up the `a0` regs
-		// child thread will jump to host_loop with `a0 = child_cpu`
-		do_simulate_clone(parent_cpu, child_cpu, child_host_stack);
-	}
+		child_host_stack += -(sizeof(struct jump_to_host_loop));
+		assert(sizeof(struct jump_to_host_loop) == 16);
+		struct jump_to_host_loop *child_args_on_stack_top =
+			(struct jump_to_host_loop *)(child_host_stack);
+		child_args_on_stack_top->entry = host_loop;
+		child_args_on_stack_top->cpu = child_cpu;
 
-	else if (sysno == SYS_CLONE3) {
-		die("Unable test clone3 with 4.19 kernel\n");
+		do_simulate_clone(parent_cpu, child_host_stack);
+	} else {
+		die("unexpected sysno\n");
 	}
 
 	// 通过返回 NULL 告知是 parent
 	return NULL;
 }
 
+typedef struct kvm_cpu *(*FORK_CHILD_ENTRY)(const struct kvm_cpu *parent_cpu,
+					int sysno);
+
+struct jump_to_dup_vm {
+	FORK_CHILD_ENTRY entry;
+	struct kvm_cpu *parent_cpu;
+	u64 sysno;
+};
+
+// 即使 parent 和 child 共享地址空间，因为 child 在新的 stack 上运行，这导致无法
+// 使用无法访问 stack 的数据，包括函数的参数，所以同样需要走 stack
+struct kvm_cpu *emulate_fork_diff_vm_new_stack(struct kvm_cpu *parent_cpu,
+					       int sysno)
+{
+	if (sysno != SYS_CLONE) {
+		die("unexpected sysno\n");
+	}
+
+	u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
+	child_host_stack += -(sizeof(struct jump_to_dup_vm));
+	assert(sizeof(struct jump_to_dup_vm) == 24);
+	struct jump_to_dup_vm *child_args_on_stack_top =
+		(struct jump_to_dup_vm *)(child_host_stack);
+
+	child_args_on_stack_top->parent_cpu = parent_cpu;
+	child_args_on_stack_top->sysno = sysno;
+	child_args_on_stack_top->entry = fork_child_entry;
+	do_simulate_clone(parent_cpu, child_host_stack);
+	return NULL;
+}
+
 // sysno == SYS_FORK || sysno == SYS_CLONE || sysno == SYS_CLONE3
 struct kvm_cpu *emulate_fork(struct kvm_cpu *parent_cpu, int sysno)
 {
-	if (arch_is_vm_shared(parent_cpu, sysno)) {
-		return emulate_fork_by_two_vcpu(parent_cpu, sysno);
-	} else {
-		return emulate_fork_by_two_vm(parent_cpu, sysno);
+	switch (arch_get_clone_type(parent_cpu, sysno)) {
+	case SAME_VM:
+		return emulate_fork_same_vm(parent_cpu, sysno);
+	case DIFF_VM_OLD_STACk:
+		return emulate_fork_diff_vm_old_stack(parent_cpu, sysno);
+	case DIFF_VM_NEW_STACK:
+		return emulate_fork_diff_vm_new_stack(parent_cpu, sysno);
+	default:
+		die("unexpected clone type");
 	}
 }
 
@@ -425,11 +462,11 @@ void host_loop(struct kvm_cpu *vcpu)
 #ifdef DUNE_DEBUG
 		dprintf(vcpu->vm->debug_fd,
 			"vcpu=%d sysno=%llx\n%08llx %08llx %08llx %08llx\n%08llx %08llx %08llx %08llx\n\n",
-			vcpu->cpu_id, sysno,
-			vcpu->syscall_parameter[0], vcpu->syscall_parameter[1],
-			vcpu->syscall_parameter[2], vcpu->syscall_parameter[3],
-			vcpu->syscall_parameter[4], vcpu->syscall_parameter[5],
-			vcpu->syscall_parameter[6], vcpu->syscall_parameter[7]);
+			vcpu->cpu_id, sysno, vcpu->syscall_parameter[0],
+			vcpu->syscall_parameter[1], vcpu->syscall_parameter[2],
+			vcpu->syscall_parameter[3], vcpu->syscall_parameter[4],
+			vcpu->syscall_parameter[5], vcpu->syscall_parameter[6],
+			vcpu->syscall_parameter[7]);
 #endif
 
 		// exit_group will destroy the vm, so don't bother to remove vcpu

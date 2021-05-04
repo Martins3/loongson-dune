@@ -439,16 +439,21 @@ u64 arch_get_sysno(const struct kvm_cpu *cpu)
 	return cpu->syscall_parameter[7];
 }
 
-bool arch_is_vm_shared(const struct kvm_cpu *parent_cpu, int sysno)
+enum CLONE_TYPE arch_get_clone_type(const struct kvm_cpu *parent_cpu, int sysno)
 {
 	// If CLONE_VM is set, the calling process and the child process run in the same memory  space.
-	if (sysno == SYS_CLONE)
-		return parent_cpu->syscall_parameter[0] & CLONE_VM;
+	if (sysno != SYS_CLONE) {
+		die("impossible sysno");
+	}
 
-	die("impossible sysno");
-	return false;
+	if (parent_cpu->syscall_parameter[0] & CLONE_VM)
+		return SAME_VM;
+
+	if (parent_cpu->syscall_parameter[1] != 0)
+		return DIFF_VM_NEW_STACK;
+
+	return DIFF_VM_OLD_STACk;
 }
-
 
 #define __SYSCALL_CLOBBERS                                                     \
 	"$t0", "$t1", "$t2", "$t3", "$t4", "$t5", "$t6", "$t7", "$t8", "memory"
@@ -531,10 +536,9 @@ void escape()
 	die("unimp");
 }
 
-u64 __do_simulate_clone(u64, u64, u64, u64, u64, u64);
+u64 __do_simulate_clone(u64, u64, u64, u64, u64);
 
-void do_simulate_clone(struct kvm_cpu *parent_cpu,
-		       const struct kvm_cpu *child_cpu, u64 child_host_stack)
+void do_simulate_clone(struct kvm_cpu *parent_cpu, u64 child_host_stack)
 {
 	u64 arg0 = parent_cpu->syscall_parameter[0];
 	// u64 a1 = parent_cpu->syscall_parameter[1];
@@ -543,8 +547,8 @@ void do_simulate_clone(struct kvm_cpu *parent_cpu,
 	u64 arg4 = parent_cpu->syscall_parameter[4];
 
 	// parent 原路返回，child 进入到 child_entry 中间
-	long child_pid = __do_simulate_clone(arg0, child_host_stack, arg2, arg3,
-					     arg4, (u64)child_cpu);
+	long child_pid =
+		__do_simulate_clone(arg0, child_host_stack, arg2, arg3, arg4);
 
 	if (child_pid > 0) {
 		parent_cpu->syscall_parameter[0] = child_pid;

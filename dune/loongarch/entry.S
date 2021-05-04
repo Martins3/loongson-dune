@@ -87,8 +87,10 @@ ENTRY (__do_simulate_clone)
   jirl zero, ra, 0
 
 1:
-  move a0, a5
-  b host_loop
+  ld.d t0, sp, 0
+  ld.d a0, sp, 8
+  ld.d a1, sp, 16
+  jirl zero, t0, 0
 END (__do_simulate_clone)
 
 
