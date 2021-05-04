@@ -18,6 +18,7 @@
 void handle_sigint(int sig)
 {
 	printf("Caught signal %d\n", sig);
+  exit(0);
 }
 
 int main(int argc, char *argv[])

@@ -357,11 +357,10 @@ struct kvm_cpu *emulate_fork_diff_vm_old_stack(struct kvm_cpu *parent_cpu,
 	return NULL;
 }
 
-typedef void (*CLONE_CHILD_ENTRY)(struct kvm_cpu *cpu);
-
-struct jump_to_host_loop {
-	CLONE_CHILD_ENTRY entry;
-	struct kvm_cpu *cpu;
+struct child_stack_para {
+	u64 entry;
+	u64 para0;
+	u64 para1;
 };
 
 struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
@@ -369,18 +368,18 @@ struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 	// without CLONE_VM
 	// 1. creating one vcpu is enough
 	// 2. child host need one stack for `host_loop`
+	BUILD_ASSERT(sizeof(struct child_stack_para) == 24);
 	struct kvm_cpu *child_cpu = dup_vcpu(parent_cpu, sysno);
 	if (child_cpu == NULL)
 		die("DUP_VCPU");
 
 	if (sysno == SYS_CLONE) {
 		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-		child_host_stack += -(sizeof(struct jump_to_host_loop));
-		assert(sizeof(struct jump_to_host_loop) == 16);
-		struct jump_to_host_loop *child_args_on_stack_top =
-			(struct jump_to_host_loop *)(child_host_stack);
-		child_args_on_stack_top->entry = host_loop;
-		child_args_on_stack_top->cpu = child_cpu;
+		child_host_stack += -(sizeof(struct child_stack_para));
+		struct child_stack_para *child_args_on_stack_top =
+			(struct child_stack_para *)(child_host_stack);
+		child_args_on_stack_top->entry = (u64)host_loop;
+		child_args_on_stack_top->para0 = (u64)child_cpu;
 
 		do_simulate_clone(parent_cpu, child_host_stack);
 	} else {
@@ -390,15 +389,6 @@ struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 	// 通过返回 NULL 告知是 parent
 	return NULL;
 }
-
-typedef struct kvm_cpu *(*FORK_CHILD_ENTRY)(const struct kvm_cpu *parent_cpu,
-					    int sysno);
-
-struct jump_to_dup_vm {
-	FORK_CHILD_ENTRY entry;
-	struct kvm_cpu *parent_cpu;
-	u64 sysno;
-};
 
 // 即使 parent 和 child 共享地址空间，因为 child 在新的 stack 上运行，这导致无法
 // 使用无法访问 stack 的数据，包括函数的参数，所以同样需要走 stack
@@ -410,14 +400,13 @@ struct kvm_cpu *emulate_fork_diff_vm_new_stack(struct kvm_cpu *parent_cpu,
 	}
 
 	u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-	child_host_stack += -(sizeof(struct jump_to_dup_vm));
-	assert(sizeof(struct jump_to_dup_vm) == 24);
-	struct jump_to_dup_vm *child_args_on_stack_top =
-		(struct jump_to_dup_vm *)(child_host_stack);
+	child_host_stack += -(sizeof(struct child_stack_para));
+	struct child_stack_para *child_args_on_stack_top =
+		(struct child_stack_para *)(child_host_stack);
 
-	child_args_on_stack_top->parent_cpu = parent_cpu;
-	child_args_on_stack_top->sysno = sysno;
-	child_args_on_stack_top->entry = fork_child_entry;
+	child_args_on_stack_top->para0 = (u64)parent_cpu;
+	child_args_on_stack_top->para1 = sysno;
+	child_args_on_stack_top->entry = (u64)fork_child_entry;
 	do_simulate_clone(parent_cpu, child_host_stack);
 	return NULL;
 }
