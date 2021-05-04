@@ -2,12 +2,14 @@
 
 ## Project status
 - MIPS arch finished and pass all the Linux Test Suite syscall tests. 😀
-- Loongarch is under construction. 🚧
+- Loongarch is under construction. 😀
 - X86 may be supported soon. 📅
 
 You have a Loonson 3A4000 Computer, you can checkout to `mips-finished` tag and play with the code.
 
-Any question, issues and emails are welcomed.
+You have a Loonson 3A5000 Computer, you can checkout to `loongarch-finished` tag and play with the code.
+
+If any question, issues and emails are welcomed.
 
 ## Semantic different with native execution
 Process running in dune and host have some minor different behavior. 
