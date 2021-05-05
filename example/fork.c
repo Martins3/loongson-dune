@@ -8,6 +8,7 @@
 #include <unistd.h> // sleep
 #include <assert.h> // assert
 #include <fcntl.h> // open
+#include <signal.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,34 +25,63 @@ int dune_enter();
 
 void dune_procmap_dump();
 
-int guest_fork()
+int guest_fork(int num)
 {
-	pid_t pid = fork();
-	double a = 12.0;
+	pid_t child;
+	while (num--) {
+		double a = 12.0;
 
-	switch (pid) {
-	case -1:
-		printf("fork failed");
-		break;
-	case 0:
-		a = a + 1;
-		printf("this is child %lf\n", a);
-		break;
-	default:
-		printf("this is parent %lf\n", a);
-		break;
+		switch (child = fork()) {
+		case -1:
+			printf("fork failed");
+			break;
+		case 0:
+			a = a + 1;
+			printf("this is child %lf\n", a);
+			exit(0);
+			break;
+		default:
+			setpgid(child, child);
+			printf("this is parent %lf\n", a);
+			kill(child, SIGALRM);
+			break;
+		}
 	}
 	return 0;
 }
+
+static inline int k_sigaction(int sig, struct sigaction *sa,
+			      struct sigaction *osa)
+{
+	int ret;
+	if ((ret = sigaction(sig, sa, osa)) == -1) {
+		printf("set action failed\n");
+		exit(1);
+	}
+	return ret;
+}
+
+int create_procs_flag = 0;
+void set_create_procs(int sig)
+{
+	create_procs_flag++;
+	printf("child [%d] get the signal\n", getpid());
+	return;
+}
+
 int main(int argc, char *argv[])
 {
+	struct sigaction sa;
 	if (dune_enter()) {
 		return 1;
 	}
 
+	sa.sa_handler = set_create_procs;
+	k_sigaction(SIGALRM, &sa, NULL);
+
 	// dune_procmap_dump();
 
-	guest_fork();
+	guest_fork(2);
 
 	return 0;
 }

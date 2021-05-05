@@ -446,12 +446,17 @@ enum CLONE_TYPE arch_get_clone_type(const struct kvm_cpu *parent_cpu, int sysno)
 		die("impossible sysno");
 	}
 
-	if (parent_cpu->syscall_parameter[0] & CLONE_VM)
+	if (parent_cpu->syscall_parameter[0] & CLONE_VM){
+    printf("same vm\n");
 		return SAME_VM;
+  }
 
-	if (parent_cpu->syscall_parameter[1] != 0)
+	if (parent_cpu->syscall_parameter[1] != 0){
+    printf("new stack\n");
 		return DIFF_VM_NEW_STACK;
+  }
 
+  printf("parent pid %d\n", getpid());
 	return DIFF_VM_OLD_STACk;
 }
 

@@ -1,5 +1,5 @@
 # TESTSRCS ?= $(wildcard *.c)
-TESTSRCS ?= hello.c
+TESTSRCS ?= fork.c
 TARGET := $(patsubst %.c, %.out, $(TESTSRCS))
 
 LIBDIR := ../dune

@@ -331,6 +331,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
+  // printf("=======\n");
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
 		die("dup_vm");
