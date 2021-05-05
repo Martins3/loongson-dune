@@ -42,6 +42,7 @@ kernel log when accessing a unmapped area.
     1. why : signal handler is executed when return from syscall or interrupt, in dune, it means host's syscall/interrupt return
     2. so what : profil(3) is based on signal handler in which pc is sampled. What is sampled in fact is host process's pc.
 
+5. if seccomp(2) doesn't permit ioctl, then every syscall is forbidden.
 
 ## Advantage over Standford Dune
 1. No kernel module.
