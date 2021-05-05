@@ -9,6 +9,7 @@
 #include <assert.h> // assert
 #include <fcntl.h> // open
 #include <signal.h>
+#include <time.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,13 +38,14 @@ int guest_fork(int num)
 			break;
 		case 0:
 			a = a + 1;
-			printf("this is child %lf\n", a);
+			printf("child %lf\n", a);
 			exit(0);
 			break;
 		default:
-			setpgid(child, child);
-			printf("this is parent %lf\n", a);
+			printf("parent %lf\n", a);
 			kill(child, SIGALRM);
+			// sleep(1);
+			// printf("-------------\n");
 			break;
 		}
 	}
@@ -65,6 +67,9 @@ int create_procs_flag = 0;
 void set_create_procs(int sig)
 {
 	create_procs_flag++;
+	struct timespec tstart = { 0, 0 };
+	clock_gettime(CLOCK_MONOTONIC, &tstart);
+	printf("signal : %ld : %ld\n", tstart.tv_sec, tstart.tv_nsec);
 	printf("child [%d] get the signal\n", getpid());
 	return;
 }

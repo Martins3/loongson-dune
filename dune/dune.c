@@ -204,13 +204,21 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		// pr_info("KVM_GET_API_VERSION");
 	}
 
-	ret = ioctl(vm->sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
-	if (ret < 0) {
-		die("KVM_CREATE_VM");
-	} else {
+	// 在调用路径中 kvm_create_vm => kvm_init_mmu_notifier =>
+	// do_mmu_notifier_register => mm_take_all_locks => signal_pending
+	// 如果 parent 正好发送一个信号，那么 KVM_CREATE_VM 会失败
+	while (true) {
+		ret = ioctl(vm->sys_fd, KVM_CREATE_VM, KVM_VM_TYPE);
+		if (ret < 0) {
+			if (errno != EINTR)
+				die("KVM_CREATE_VM");
+			else
+				continue;
+		}
 		vm->vm_fd = ret;
 		pr_info("KVM_CREATE_VM");
-	}
+    break;
+	};
 
 	int mmap_size = ioctl(vm->sys_fd, KVM_GET_VCPU_MMAP_SIZE, 0);
 	if (mmap_size < 0)
@@ -331,7 +339,7 @@ struct kvm_cpu *dup_vcpu(const struct kvm_cpu *parent_cpu, int sysno)
 
 struct kvm_cpu *dup_vm(const struct kvm_cpu *parent_cpu, int sysno)
 {
-  // printf("=======\n");
+	// printf("=======\n");
 	struct kvm_cpu *child_cpu = kvm_init_vm_with_one_cpu();
 	if (child_cpu == NULL) {
 		die("dup_vm");
