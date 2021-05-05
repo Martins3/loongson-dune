@@ -11,10 +11,15 @@
 
 #include "../dune/dune.h"
 
-int main(int argc, char *argv[]){
-
+int main(int argc, char *argv[])
+{
 	DUNE_ENTER;
-  printf("hello\n");
-  
-  return 0;
+	printf("hello\n");
+	int a = getpid();
+	int b;
+	while ((b = getpid()) == a) {
+		printf("continue\n");
+	}
+	printf("we failed  %d %d\n", a, b);
+	return 0;
 }
