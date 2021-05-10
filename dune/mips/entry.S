@@ -26,7 +26,7 @@ ebase_tlb_entry_begin:
 
 	li k0, EntryLo1_1G_OFFSET
 	or k1, k0 
-  dmtc0 k1, C0_ENTRYLO1
+	dmtc0 k1, C0_ENTRYLO1
 	tlbwr
 	eret
 ebase_tlb_entry_end:
