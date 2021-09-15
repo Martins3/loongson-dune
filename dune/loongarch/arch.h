@@ -13,25 +13,11 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long long u64;
 
-
-# define FPU_REG_WIDTH	256
 #define NUM_FPU_REGS 32
 
-union fpureg {
-	u32 val32[FPU_REG_WIDTH / 32];
-	u64 val64[FPU_REG_WIDTH / 64];
-};
-
-struct loongarch_fpu_struct {
-	unsigned int fcsr;
-	unsigned int	vcsr;
-	u64	fcc;	/* 8x8 */
-	union fpureg fpr[NUM_FPU_REGS];
-};
-
 struct thread_info {
-	struct kvm_regs regs;
-  struct loongarch_fpu_struct fpu;
+  struct kvm_regs regs;
+  struct kvm_fpu fpu;
 
   u64 era;
   void *ebase;

@@ -117,45 +117,26 @@ static void kvm_enable_fpu(struct kvm_cpu *cpu)
 }
 
 static void kvm_access_fpu_regs(struct kvm_cpu *cpu,
-				const struct loongarch_fpu_struct *fpu_regs,
+				const struct kvm_fpu *fpu_regs,
 				enum ACCESS_OP op)
 {
-	struct kvm_one_reg reg;
-
-	for (int i = 0; i < NUM_FPU_REGS; ++i) {
-		reg.id = KVM_REG_LOONGARCH_VEC_256(i);
-		reg.addr = (u64) & (fpu_regs->fpr[i]);
-		kvm_access_reg(cpu, &reg, op);
-	}
-
-	reg.id = KVM_REG_LOONGARCH_FCR_CSR;
-	reg.addr = (u64) & (fpu_regs->fcsr);
-	kvm_access_reg(cpu, &reg, op);
-
-	reg.id = KVM_REG_LOONGARCH_VCSR;
-	reg.addr = (u64) & (fpu_regs->vcsr);
-	kvm_access_reg(cpu, &reg, op);
-
-	// MIPS 中只是设置了两个数值 FCR_CSR 和 VCSR
-	reg.id = KVM_REG_LOONGARCH_FCCR;
-	reg.addr = (u64) & (fpu_regs->fcc);
-	kvm_access_reg(cpu, &reg, op);
+    ioctl(cpu->vcpu_fd, op == SET ? KVM_SET_FPU : KVM_GET_FPU, &(cpu->info.fpu));
 }
 
 static void kvm_get_fpu_regs(struct kvm_cpu *cpu,
-			     const struct loongarch_fpu_struct *fpu_regs)
+			     const struct kvm_fpu *fpu_regs)
 {
 	kvm_access_fpu_regs(cpu, fpu_regs, GET);
 }
 
 static void kvm_set_fpu_regs(struct kvm_cpu *cpu,
-			     const struct loongarch_fpu_struct *fpu_regs)
+			     const struct kvm_fpu *fpu_regs)
 {
 	kvm_access_fpu_regs(cpu, fpu_regs, SET);
 }
 
 static void dup_fpu(struct kvm_cpu *child_cpu,
-		    const struct loongarch_fpu_struct *parent_fpu)
+		    const struct kvm_fpu *parent_fpu)
 {
 	kvm_enable_fpu(child_cpu);
 	kvm_set_fpu_regs(child_cpu, parent_fpu);
@@ -172,21 +153,22 @@ void kvm_get_parent_thread_info(struct kvm_cpu *parent_cpu)
 	kvm_get_fpu_regs(parent_cpu, &parent_cpu->info.fpu);
 }
 
+extern void get_fpu_regs(struct kvm_fpu *);
+
 static void init_fpu(struct kvm_cpu *cpu)
 {
 	kvm_enable_fpu(cpu);
 
-	struct loongarch_fpu_struct fpu_regs;
+	struct kvm_fpu fpu_regs;
 
-	extern void get_fpu_regs(struct loongarch_fpu_struct *);
 	get_fpu_regs(&fpu_regs);
 
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcsr) == VCPU_FCSR0);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, vcsr) == VCPU_VCSR);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fcc) == VCPU_FCC);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[0]) ==
+	BUILD_ASSERT(offsetof(struct kvm_fpu, fcsr) == VCPU_FCSR0);
+	BUILD_ASSERT(offsetof(struct kvm_fpu, vcsr) == VCPU_VCSR);
+	BUILD_ASSERT(offsetof(struct kvm_fpu, fcc) == VCPU_FCC);
+	BUILD_ASSERT(offsetof(struct kvm_fpu, fpr[0]) ==
 		     VCPU_FPR0);
-	BUILD_ASSERT(offsetof(struct loongarch_fpu_struct, fpr[31]) ==
+	BUILD_ASSERT(offsetof(struct kvm_fpu, fpr[31]) ==
 		     VCPU_FPR0 + 31 * VCPU_FPR_LEN);
 
 	kvm_set_fpu_regs(cpu, &fpu_regs);
