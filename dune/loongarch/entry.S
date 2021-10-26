@@ -55,6 +55,7 @@ st.d a4, t0, 32
 st.d a5, t0, 40
 st.d a6, t0, 48
 st.d a7, t0, 56
+xor  a0, a0, a0
 HYPERCALL
 ld.d v0, t0, 0
 
