@@ -7,14 +7,30 @@
 | Loongarch | 😀     |
 | X86       | 📅     |
 
-You have a Loonson 3A4000 Computer, you can checkout to `mips-finished` tag and play with the code.
-
-You have a Loonson 3A5000 Computer, you can checkout to `loongarch-finished` tag and play with the code.
-
 If any question, issues and emails are welcomed.
 
-## Semantic different with native execution
-Process running in dune and host have some minor different behavior. 
+## Advantage over Standford Dune
+1. **No kernel module**.
+2. No need to write code for intel and amd CPU separately.
+3. No need to disable kernel kaslr.
+4. Escape dune easily.
+   - Process can enter dune and then escape dune whenever it wants to.
+5. Nested Dune.
+6. Support multiple architectures.
+7. Support fork related syscall, multi-thread program works almost perfectly.
+8. Much more stable.
+9. Less code, only about 1200 loc for one arch(Loongarch).
+
+## Design explanation
+1. GVA mapped to HVA 1:1, so the process "feels" the address space is the same even jumps into dune.
+2. When guest invoke syscall, it will exit to host by the hypercall, then the syscall is simulated in host userspace.
+
+If the guest process is QEMU，picture below explains what's happeding on a guest syscall.
+![](./dune.jpeg)
+
+
+## Semantic difference with native execution
+Process running in dune and host have some minor different behavior.
 
 1. segment fault.
 
@@ -44,39 +60,11 @@ kernel log when accessing a unmapped area.
 
 5. if seccomp(2) doesn't permit ioctl, then every syscall is forbidden.
 
-## Advantage over Standford Dune
-1. No kernel module.
-2. Don't need to write code for intel and amd CPU separately.
-3. Don't need to disable kernel kaslr.
-4. Escape dune easily.
-   - Process can enter dune and then escape dune whenever it wants to.
-5. Nested Dune.
-6. Support multiple architectures.
-7. Support fork related syscall, multi-thread program works almost perfectly.
-8. Much more stable.
-9. Less code, only about 1200 loc for one arch(Loongarch).
 
-## Disadvantage
-Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduce.
+## fork/clone
+fork/clone is tricky and needs extra attention.
 
-fork/clone/vfork simulation very slow, because we have create many vm and vcpu.
-## Design explanation
-1. In guest, gva mapped to gpa 1:1, so process "feels" the address space is same even jump into dune
-2. When guest invoke syscall, it will be directed to hyerpcall and escape to host, then the syscall simulated in host userspace.
-
-#### fork/clone
 1. KVM disallow fork() and similar games when using a VM, so we should create another vm for child process when child doesn't share the VM.
-2. if child run in a new stack, it can't access local variable anymore, so we need some handcrafted assembly code to handle it.
-
-So there are three types of fork/clone simulation:
-```c
-enum CLONE_TYPE{
-  SAME_VM, // Create vcpu firstly, and do the clone by assembly code
-  DIFF_VM_NEW_STACK, // do the fork by assembly code, then create another vm
-  DIFF_VM_OLD_STACk, // do the fork, then create another vm
-};
-```
-
 ```c
 static long kvm_vcpu_ioctl(struct file *filp,
 			   unsigned int ioctl, unsigned long arg)
@@ -104,4 +92,18 @@ static long kvm_vcpu_ioctl(struct file *filp,
  Signed-off-by: Avi Kivity <avi@qumranet.com>
 ```
 
+2. if child run in a new stack, it can't access local variable anymore, so we need some handcrafted assembly code to handle it.
+
+So there are three types of fork/clone simulation:
+```c
+enum CLONE_TYPE{
+  SAME_VM, // Create vcpu firstly, and do the clone by assembly code
+  DIFF_VM_NEW_STACK, // do the fork by assembly code, then create another vm
+  DIFF_VM_OLD_STACk, // do the fork, then create another vm
+};
+```
+
 In `init_child_thread_info`, the child's gpr, especially the stack pointer, tls register and pc will be initilized.
+
+## Disadvantage
+Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduced，but you can eliminate it by kernel modules.
