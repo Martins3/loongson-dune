@@ -3,3 +3,4 @@
 *.out
 .ccls-cache
 compile_commands.json
+.DS_Store

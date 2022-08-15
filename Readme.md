@@ -107,3 +107,4 @@ In `init_child_thread_info`, the child's gpr, especially the stack pointer, tls 
 
 ## Disadvantage
 Syscall is emulated on host userspace instead of host kernel space. The user / kernel space switch is the overhead that Loonson introduced，but you can eliminate it by kernel modules.
+But if [Direct host system calls from KVM](https://lwn.net/Articles/902585/) is possible, there's almost no overhead comparing to native way.
