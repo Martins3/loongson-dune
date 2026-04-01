@@ -5,7 +5,7 @@
 |-----------|--------|
 | MIPS      | 😀     |
 | Loongarch | 😀     |
-| X86       | 📅     |
+| X86_64    | 😀     |
 
 If any question, issues and emails are welcomed.
 
@@ -23,7 +23,31 @@ If any question, issues and emails are welcomed.
 
 ## Design explanation
 1. GVA mapped to HVA 1:1, so the process "feels" the address space is the same even jumps into dune.
-2. When guest invoke syscall, it will exit to host by the hypercall, then the syscall is simulated in host userspace.
+2. When guest invoke syscall, it will exit to host by an architecture-specific trap path (for example hypercall or x86 I/O exit), then the syscall is simulated in host userspace.
+
+## X86_64 quick start
+Build the x86_64 runtime and a small verification matrix:
+
+```sh
+make -C dune ARCH=x86_64
+make -C example ARCH=x86_64 TESTSRCS="libc_smoke.c clone.c pthread.c fork_smoke.c"
+```
+
+Run a few representative examples:
+
+```sh
+./example/libc_smoke.out
+./example/clone.out
+./example/pthread.out
+./example/fork_smoke.out
+```
+
+The examples above cover:
+
+1. glibc syscall wrappers and libc code paths (`libc_smoke.c`)
+2. same-VM `clone()` with a guest child stack (`clone.c`)
+3. `clone3()` / TLS / `pthread_create()` / `pthread_join()` (`pthread.c`)
+4. `fork()` plus `waitpid()` on a new VM (`fork_smoke.c`)
 
 If the guest process is QEMU，picture below explains what's happeding on a guest syscall.
 ![](./dune.jpeg)

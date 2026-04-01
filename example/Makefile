@@ -1,12 +1,12 @@
 # TESTSRCS ?= $(wildcard *.c)
-TESTSRCS ?= hello.c
+TESTSRCS ?= clone.c
 TARGET := $(patsubst %.c, %.out, $(TESTSRCS))
 
 LIBDIR := ../dune
 
 LIBDUNE := $(LIBDIR)/libdune.a
 
-ARCH=loongarch
+ARCH ?= loongarch
 
 DEPS_FILES := config.h dune.h dune.c $(ARCH)/arch.c $(ARCH)/entry.S $(ARCH)/internal.h 
 DEPS := $(addprefix $(LIBDIR)/,$(DEPS_FILES))
@@ -26,10 +26,10 @@ all:$(TARGET)
 $(TARGET): %.out: %.c
 
 %.out: %.c $(DEPS)
-	$(MAKE) -C $(LIBDIR)
+	$(MAKE) -C $(LIBDIR) ARCH=$(ARCH)
 	$(CC) $(CFLAGS) -I$(LIBDIR) $(LDLIBS) $< $(LIBDUNE) -o $@
 
 clean:
-	rm -f $(TEST)
+	rm -f $(TARGET)
 	rm -f *.txt
-	$(MAKE) -C ../dune/ clean
+	$(MAKE) -C ../dune/ clean ARCH=$(ARCH)

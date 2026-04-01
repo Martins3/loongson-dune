@@ -33,11 +33,6 @@ int guest_clone()
 	if (stack == MAP_FAILED)
 		return 111;
 
-	printf("1234\n");
-	printf("123\n");
-	printf("12\n");
-	printf("1\n");
-
 	printf("Parent: PID=%ld PPID=%ld\n", (long)getpid(), (long)getppid());
 
 	flags |= CLONE_VM;
@@ -54,7 +49,7 @@ int guest_clone()
 
 	stackTop = stack + STACK_SIZE; /* Assume stack grows downward */
 
-	printf("child new stack %p in guest_clone\n", stackTop);
+	printf("Child stack %p\n", stackTop);
 
 	if (clone(childFunc, stackTop, flags | SIGCHLD, &args) == -1)
 		return 112;
@@ -62,18 +57,13 @@ int guest_clone()
 	/* Parent falls through to here. Wait for child; __WCLONE option is
        required for child notifying with signal other than SIGCHLD. */
 
-	printf("fuck\n");
-	printf("fuck\n");
-	printf("fuck\n");
-	printf("fuck\n");
-	printf("fuck\n");
-	printf("fuck\n");
+	printf("Parent: waiting for cloned child\n");
 
 	pid = waitpid(-1, &status, __WALL);
 	if (pid == -1)
 		return 0;
 
-	printf("    Child PID=%ld\n", (long)pid);
+	printf("Child exited: PID=%ld status=%d\n", (long)pid, status);
 
 	return 0;
 }

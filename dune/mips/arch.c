@@ -409,6 +409,11 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 	kvm_launch(cpu, &regs);
 }
 
+bool arch_is_syscall_exit(const struct kvm_cpu *cpu)
+{
+	return cpu->kvm_run->exit_reason == KVM_EXIT_HYPERCALL;
+}
+
 bool do_syscall(struct kvm_cpu *cpu, bool is_fork)
 {
 	register long r4 __asm__("$4") = cpu->syscall_parameter[1];
@@ -440,6 +445,12 @@ void child_entry(struct kvm_cpu *cpu)
 	host_loop(cpu);
 }
 
+void arch_share_vm_state(struct kvm_cpu *child_cpu,
+			 const struct kvm_cpu *parent_cpu)
+{
+	child_cpu->info.ebase = parent_cpu->info.ebase;
+}
+
 static void dup_fpu(struct kvm_cpu *child_cpu,
 		    const struct mips_fpu_struct *parent_fpu)
 {
@@ -467,7 +478,7 @@ void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_regs child_regs;
-	ebase_share(child_cpu, parent_cpu);
+	arch_share_vm_state(child_cpu, parent_cpu);
 
 	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
 
@@ -513,6 +524,11 @@ void arch_set_thread_area(struct kvm_cpu *vcpu)
 
 bool arch_handle_special_syscall(struct kvm_cpu *vcpu, u64 sysno)
 {
+	if (sysno == SYS_SET_THREAD_AREA) {
+		arch_set_thread_area(vcpu);
+		return false;
+	}
+
 	if (sysno == SYS_PIPE) {
 		int *pipedes = (int *)vcpu->syscall_parameter[1];
 		int ret = host_loop_pipe(pipedes);

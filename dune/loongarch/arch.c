@@ -415,6 +415,11 @@ void arch_dune_enter(struct kvm_cpu *cpu)
 	kvm_launch(cpu, &regs);
 }
 
+bool arch_is_syscall_exit(const struct kvm_cpu *cpu)
+{
+	return cpu->kvm_run->exit_reason == KVM_EXIT_HYPERCALL;
+}
+
 // a7($r11) 是作为 syscall number
 u64 arch_get_sysno(const struct kvm_cpu *cpu)
 {
@@ -469,11 +474,17 @@ bool arch_do_syscall(struct kvm_cpu *cpu, bool is_fork)
 }
 #endif
 
+void arch_share_vm_state(struct kvm_cpu *child_cpu,
+			 const struct kvm_cpu *parent_cpu)
+{
+	child_cpu->info.ebase = parent_cpu->info.ebase;
+}
+
 void init_child_thread_info(struct kvm_cpu *child_cpu,
 			    const struct kvm_cpu *parent_cpu, int sysno)
 {
 	struct kvm_regs child_regs;
-	ebase_share(child_cpu, parent_cpu);
+	arch_share_vm_state(child_cpu, parent_cpu);
 
 	memcpy(&child_regs, &parent_cpu->info.regs, sizeof(struct kvm_regs));
 

@@ -1,22 +1,36 @@
-CFLAGS := -g -DLOONGSON -static
-CFLAGS += -pthread
+ARCH ?= loongarch
+CC ?= gcc
+
+CPPFLAGS += -DLOONGSON
+CFLAGS += -g -static -pthread
+
+ifeq ($(ARCH),mips)
+ARCH_CPP := MIPS_ARCH
+else ifeq ($(ARCH),loongarch)
+ARCH_CPP := LOONGSON_ARCH
+else ifeq ($(ARCH),x86_64)
+ARCH_CPP := X86_64_ARCH
+else
+$(error Unsupported ARCH=$(ARCH))
+endif
+
+CPPFLAGS += -DARCH=$(ARCH_CPP)
 
 # CC=/usr/local/musl/bin/musl-gcc
 # CFLAGS += -Wl,--whole-archive -lpthread -Wl,--no-whole-archive
 # $(info === $(CFLAGS))
 all: libdune.a
 
-ARCH=loongarch
 HEADERS=$(ARCH)/arch.h $(ARCH)/internal.h dune.h config.h
 
 $(ARCH)/arch.o: $(ARCH)/arch.c $(HEADERS)
-	gcc $(CFLAGS) $< -c -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -c -o $@
 
 $(ARCH)/entry.o: $(ARCH)/entry.S $(HEADERS)
-	gcc $(CFLAGS) $< -c -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -c -o $@
 
 dune.o:dune.c $(HEADERS)
-	gcc $(CFLAGS) $< -c -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -c -o $@
 
 libdune.a: $(ARCH)/arch.o $(ARCH)/entry.o dune.o
 	ar -rcs $@ $^

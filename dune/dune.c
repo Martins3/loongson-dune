@@ -27,6 +27,7 @@
 #include <pthread.h>
 
 struct kvm_cpu *kvm_init_vm_with_one_cpu();
+static void kvm_map_initial_memory(struct kvm_vm *vm);
 
 #define KNRM "\x1B[0m"
 #define KRED "\x1B[31m"
@@ -90,6 +91,40 @@ void die(const char *err, ...)
 	die_builtin(err, params);
 	va_end(params);
 }
+
+#if ARCH == X86_64_ARCH
+static void x86_dump_guest_exception(u64 vector, u64 error, u64 rip)
+{
+	const unsigned char *insn = (const unsigned char *)rip;
+	char line[512];
+	FILE *map;
+
+	pr_info("guest exception vector=%llu error=%#llx rip=%#llx", vector,
+		error, rip);
+	pr_info("guest bytes=%02x %02x %02x %02x %02x %02x %02x %02x",
+		insn[0], insn[1], insn[2], insn[3], insn[4], insn[5], insn[6],
+		insn[7]);
+
+	map = fopen("/proc/self/maps", "r");
+	if (!map)
+		return;
+
+	while (fgets(line, sizeof(line), map) != NULL) {
+		unsigned long begin;
+		unsigned long end;
+
+		if (sscanf(line, "%lx-%lx", &begin, &end) != 2)
+			continue;
+		if (rip < begin || rip >= end)
+			continue;
+		line[strcspn(line, "\n")] = '\0';
+		pr_info("guest rip mapping=%s", line);
+		break;
+	}
+
+	fclose(map);
+}
+#endif
 
 void kvm_free_vcpu(struct kvm_cpu *vcpu)
 {
@@ -179,6 +214,9 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 	vm->sys_fd = -1;
 	vm->vm_fd = -1;
 	vm->kvm_run_mmap_size = -1;
+	vm->next_mem_slot = 0;
+	vm->max_mem_slots = 0;
+	vm->next_gpa = PAGESIZE;
 
 	if (pthread_spin_init(&vm->lock, PTHREAD_PROCESS_PRIVATE) != 0) {
 		die("pthread_spin_init failed\n");
@@ -204,6 +242,9 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		// pr_info("KVM_GET_API_VERSION");
 	}
 
+	ret = ioctl(vm->sys_fd, KVM_CHECK_EXTENSION, KVM_CAP_NR_MEMSLOTS);
+	vm->max_mem_slots = (ret > 0) ? ret : 32;
+
 	// 在调用路径中 kvm_create_vm => kvm_init_mmu_notifier =>
 	// do_mmu_notifier_register => mm_take_all_locks => signal_pending
 	// 如果 parent 正好发送一个信号，那么 KVM_CREATE_VM 会失败
@@ -225,21 +266,7 @@ struct kvm_cpu *kvm_init_vm_with_one_cpu()
 		die("KVM_GET_VCPU_MMAP_SIZE");
 	vm->kvm_run_mmap_size = mmap_size;
 
-	struct kvm_userspace_memory_region mem =
-		(struct kvm_userspace_memory_region){
-			.slot = 0,
-			.flags = 0,
-			.guest_phys_addr = 0,
-			.memory_size = (u64)(1) << 40,
-			.userspace_addr = 0,
-		};
-
-	ret = ioctl(vm->vm_fd, KVM_SET_USER_MEMORY_REGION, &mem);
-	if (ret < 0) {
-		die("KVM_SET_USER_MEMORY_REGION");
-	} else {
-		// pr_info("KVM_SET_USER_MEMORY_REGION");
-	}
+	kvm_map_initial_memory(vm);
 
 #ifdef DUNE_DEBUG
 	vm->debug_fd = open("strace.txt", O_TRUNC | O_WRONLY | O_CREAT, 0644);
@@ -263,6 +290,56 @@ struct dune_procmap_entry {
 	char *path;
 	int type;
 };
+
+void kvm_map_memory_range(struct kvm_vm *vm, u64 start, u64 len)
+{
+	struct kvm_userspace_memory_region mem;
+	int slot;
+
+	if (len == 0)
+		return;
+
+	start &= ~(u64)(PAGESIZE - 1);
+	len = (len + PAGESIZE - 1) & ~(u64)(PAGESIZE - 1);
+
+	if (pthread_spin_lock(&vm->lock)) {
+		die("locked failed");
+	}
+
+	if (vm->next_mem_slot >= vm->max_mem_slots) {
+		if (pthread_spin_unlock(&vm->lock))
+			die("unlocked failed");
+		die("No more memslot to allocate\n");
+	}
+
+	slot = vm->next_mem_slot++;
+	mem = (struct kvm_userspace_memory_region){
+		.slot = slot,
+		.flags = 0,
+		.guest_phys_addr = start,
+		.memory_size = len,
+		.userspace_addr = start,
+	};
+
+	if (ioctl(vm->vm_fd, KVM_SET_USER_MEMORY_REGION, &mem) < 0) {
+		if (pthread_spin_unlock(&vm->lock))
+			die("unlocked failed");
+		die("KVM_SET_USER_MEMORY_REGION");
+	}
+
+	if (pthread_spin_unlock(&vm->lock)) {
+		die("unlocked failed");
+	}
+}
+
+static void kvm_map_initial_memory(struct kvm_vm *vm)
+{
+#if ARCH == X86_64_ARCH
+	(void)vm;
+#else
+	kvm_map_memory_range(vm, 0, KVM_GUEST_MEMORY_SIZE);
+#endif
+}
 
 static u64 expand_stack_getrlimit()
 {
@@ -382,18 +459,13 @@ struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 	if (child_cpu == NULL)
 		die("DUP_VCPU");
 
-	if (sysno == SYS_CLONE) {
-		u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
-		child_host_stack += -(sizeof(struct child_stack_para));
-		struct child_stack_para *child_args_on_stack_top =
-			(struct child_stack_para *)(child_host_stack);
-		child_args_on_stack_top->entry = (u64)host_loop;
-		child_args_on_stack_top->para0 = (u64)child_cpu;
-
-		do_simulate_clone(parent_cpu, child_host_stack);
-	} else {
-		die("unexpected sysno\n");
-	}
+	u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
+	child_host_stack += -(sizeof(struct child_stack_para));
+	struct child_stack_para *child_args_on_stack_top =
+		(struct child_stack_para *)(child_host_stack);
+	child_args_on_stack_top->entry = (u64)host_loop;
+	child_args_on_stack_top->para0 = (u64)child_cpu;
+	do_simulate_clone(parent_cpu, child_host_stack);
 
 	// 通过返回 NULL 告知是 parent
 	return NULL;
@@ -404,10 +476,6 @@ struct kvm_cpu *emulate_fork_same_vm(struct kvm_cpu *parent_cpu, int sysno)
 struct kvm_cpu *emulate_fork_diff_vm_new_stack(struct kvm_cpu *parent_cpu,
 					       int sysno)
 {
-	if (sysno != SYS_CLONE) {
-		die("unexpected sysno\n");
-	}
-
 	u64 child_host_stack = (u64)mmap_one_page() + PAGESIZE;
 	child_host_stack += -(sizeof(struct child_stack_para));
 	struct child_stack_para *child_args_on_stack_top =
@@ -439,8 +507,7 @@ void host_loop(struct kvm_cpu *vcpu)
 {
 	while (true) {
 		long err = ioctl(vcpu->vcpu_fd, KVM_RUN, 0);
-		u64 sysno = arch_get_sysno(vcpu);
-		struct kvm_regs regs;
+		u64 sysno;
 
 		if (err < 0 && (errno != EINTR && errno != EAGAIN)) {
 			die("KVM_RUN : err=%d\n", err);
@@ -450,10 +517,24 @@ void host_loop(struct kvm_cpu *vcpu)
 			continue;
 		}
 
-		if (vcpu->kvm_run->exit_reason != KVM_EXIT_HYPERCALL) {
-			die("KVM_EXIT_IS_NOT_HYPERCALL vcpu=%d exit_reason=%d",
+		if (!arch_is_syscall_exit(vcpu)) {
+			die("unexpected vcpu=%d exit_reason=%d",
 			    vcpu->cpu_id, vcpu->kvm_run->exit_reason);
 		}
+
+		sysno = arch_get_sysno(vcpu);
+
+#if ARCH == X86_64_ARCH
+		if (sysno == SYS_GUEST_EXCEPTION) {
+			x86_dump_guest_exception(vcpu->syscall_parameter[0],
+						 vcpu->syscall_parameter[1],
+						 vcpu->syscall_parameter[2]);
+			die("guest exception vector=%llu error=%#llx rip=%#llx",
+			    vcpu->syscall_parameter[0],
+			    vcpu->syscall_parameter[1],
+			    vcpu->syscall_parameter[2]);
+		}
+#endif
 
 		if (sysno == SYS_KEXEC_LOAD)
 			die("Unsupported syscall");
@@ -471,10 +552,6 @@ void host_loop(struct kvm_cpu *vcpu)
 		// exit_group will destroy the vm, so don't bother to remove vcpu
 		if (sysno == SYS_EXIT) {
 			kvm_free_vcpu(vcpu);
-		}
-
-		if (sysno == SYS_SET_THREAD_AREA) {
-			arch_set_thread_area(vcpu);
 		}
 
 		if (sysno == SYS_FORK || sysno == SYS_CLONE ||

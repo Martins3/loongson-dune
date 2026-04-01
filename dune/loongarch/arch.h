@@ -25,6 +25,7 @@ struct thread_info {
 
 #define KVM_MAX_VCPUS 16
 #define PAGESIZE (1 << PAGESHIFT)
+#define KVM_GUEST_MEMORY_SIZE ((u64)1 << 40)
 
 /**
  * copied from https://github.com/torvalds/linux/tree/master/include/uapi/asm-generic/unistd.h

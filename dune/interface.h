@@ -1,6 +1,7 @@
 #ifndef INTERFACE_H_32DCD7PQ
 #define INTERFACE_H_32DCD7PQ
 #include <stdbool.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/mman.h>
@@ -10,6 +11,8 @@
 #include "mips/arch.h"
 #elif ARCH == LOONGSON_ARCH
 #include "loongarch/arch.h"
+#elif ARCH == X86_64_ARCH
+#include "x86_64/arch.h"
 #else
 #error Unsupported Architecture
 #endif
@@ -40,6 +43,9 @@ struct kvm_vm {
 	int sys_fd;
 	int vm_fd;
 	int kvm_run_mmap_size;
+	int next_mem_slot;
+	int max_mem_slots;
+	u64 next_gpa;
 #ifdef DUNE_DEBUG
 	int debug_fd;
 #endif
@@ -55,6 +61,9 @@ struct kvm_cpu {
 	int vcpu_fd; /* For VCPU ioctls() */
 	struct kvm_run *kvm_run;
 	u64 syscall_parameter[8];
+	u64 syscall_return_rip;
+	u64 syscall_return_rflags;
+	u64 syscall_resume_rip;
 
 	// architecture specified vm state
 	struct thread_info info;
@@ -78,14 +87,9 @@ static inline void *mmap_one_page()
 	return mmap_pages(1);
 }
 
-static inline void ebase_share(struct kvm_cpu *child_cpu,
-			const struct kvm_cpu *parent_cpu)
-{
-	child_cpu->info.ebase = parent_cpu->info.ebase;
-}
-
 void vacate_current_stack(struct kvm_cpu *cpu);
 void host_loop(struct kvm_cpu *vcpu);
+void kvm_map_memory_range(struct kvm_vm *vm, u64 start, u64 len);
 
 /** 
  * copied form : https://github.com/torvalds/linux/blob/master/kernel/fork.c
@@ -115,6 +119,7 @@ struct clone3_args {
 	u64 tls; /* Location of new TLS */
 	u64 set_tid; /* Pointer to a pid_t array */
 	u64 set_tid_size; /* Number of elements in set_tid */
+	u64 cgroup; /* Target cgroup file descriptor */
 };
 
 enum CLONE_TYPE{
@@ -125,6 +130,9 @@ enum CLONE_TYPE{
 
 void arch_dune_enter(struct kvm_cpu *cpu);
 void switch_stack(struct kvm_cpu *cpu, u64 host_stack);
+void arch_share_vm_state(struct kvm_cpu *child_cpu,
+			 const struct kvm_cpu *parent_cpu);
+bool arch_is_syscall_exit(const struct kvm_cpu *cpu);
 u64 arch_get_sysno(const struct kvm_cpu *cpu);
 enum CLONE_TYPE arch_get_clone_type(const struct kvm_cpu *parent_cpu, int sysno);
 bool arch_do_syscall(struct kvm_cpu *cpu, bool is_fork);

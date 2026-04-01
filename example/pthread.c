@@ -31,14 +31,14 @@ int safe_pthread_join(pthread_t thread_id, void **retval)
 {
 	int rval;
 
-	printf("just before pthread join %lx\n", thread_id);
+	printf("before pthread_join %lx\n", thread_id);
 	rval = pthread_join(thread_id, retval);
 
 	if (rval) {
 		printf("failed\n");
 		exit(1);
 	}
-	printf("pthread succeed\n");
+	printf("pthread_join ok\n");
 
 	return rval;
 }
@@ -56,7 +56,7 @@ static void wait_threads(pthread_t *id)
 	int i;
 
 	for (i = 0; i < thread_cnt; ++i) {
-		printf("pthread join never works %d\n", i);
+		printf("waiting thread %d\n", i);
 		safe_pthread_join(id[i], NULL);
 	}
 }
@@ -66,7 +66,7 @@ void *thread_fn_01(void *arg)
 	int i;
 
 	sleep(1);
-	printf("%ld stack = %p\n", (intptr_t)arg, &i);
+	printf("thread %ld stack = %p\n", (intptr_t)arg, &i);
 	return NULL;
 }
 
